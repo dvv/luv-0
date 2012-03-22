@@ -35,6 +35,7 @@ struct req_s {
   char *headers;
   size_t lheaders;
   uint8_t headers_sent : 1;
+  uint8_t _freed : 1;
   void (*on_event)(req_t *self, enum event_t ev, int status, void *data);
 };
 
@@ -43,6 +44,7 @@ struct client_s {
   http_parser parser;
   req_t *req;
   uv_timer_t timer_timeout;
+  uint8_t closed : 1;
   void (*on_event)(client_t *self, enum event_t ev, int status, void *data);
 };
 
@@ -51,11 +53,15 @@ typedef struct {
   callback_t cb;
 } client_write_req_t;
 
-#define DEBUG(fmt) fprintf(stderr, fmt "\n")
-#define DEBUGF(fmt, params...) fprintf(stderr, fmt "\n", params)
+#if 0
+# define DEBUG(fmt) fprintf(stderr, fmt "\n")
+# define DEBUGF(fmt, params...) fprintf(stderr, fmt "\n", params)
+#else
+# define DEBUG(fmt) do {} while (0)
+# define DEBUGF(fmt, params...) do {} while (0)
+#endif
 
-static void client_active(client_t *self);
-static void client_inactive(client_t *self, uint64_t timeout);
+static void client_timeout(client_t *self, uint64_t timeout);
 static void client_on_timeout(uv_timer_t *timer, int status);
 
 #endif
