@@ -11,6 +11,6 @@ LDFLAGS +=
 
 all: luv
 
-luv: src/luv.c src/http.c $(LIBS)
+luv: src/luv.c $(LIBS)
 	$(CC) -pipe -g -O2 $(CFLAGS) -o $@ $^ $(LDFLAGS) -lpthread -lm -lrt
 	./luv
