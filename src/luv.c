@@ -9,6 +9,10 @@
 
 static uv_loop_t *loop;
 
+#define FIX_EMFILE 0
+#define DELAY_RESPONSE 1
+#define SEPARATE_WRITE_HEAD 1
+
 /******************************************************************************/
 /* utility
 /******************************************************************************/
@@ -31,9 +35,9 @@ static void client_timeout(client_t *self, uint64_t timeout)
 {
   //DEBUGF("TIMEOUT %p %d", self, (int)timeout);
   if (!timeout) {
-    //uv_timer_stop(&self->timer_timeout);
+    uv_timer_stop(&self->timer_timeout);
   } else {
-    //uv_timer_start(&self->timer_timeout, client_on_timeout, timeout, 0);
+    uv_timer_start(&self->timer_timeout, client_on_timeout, timeout, 0);
   }
 }
 
@@ -74,7 +78,7 @@ static void client_after_close(uv_handle_t *handle)
   EVENT(self, EVT_CLOSE, uv_last_error(loop).code, NULL);
   // free allocations
   DEBUGF("CFREE %p", self);
-  free(self);
+  client_free(self);
 }
 
 // shutdown and close the client
@@ -163,9 +167,6 @@ static void response_end(msg_t *self)
   "Content-Length: 6\r\n" \
   "\r\n"
 
-/*  "Connection: Keep-Alive\r\n" \
-  "Content-Type: text/plain\r\n" \ */
-
 #define RESPONSE_BODY \
   "Hello\n"
 
@@ -178,7 +179,12 @@ static void after_write(int status)
 static void request_on_timeout(uv_timer_t *timer, int status)
 {
   msg_t *self = timer->data;
+#if SEPARATE_WRITE_HEAD
+  response_write_head(self, RESPONSE_HEAD, after_write);
+  response_write(self, RESPONSE_BODY, after_write);
+#else
   response_write_head(self, RESPONSE_HEAD RESPONSE_BODY, after_write);
+#endif
   response_end(self);
 }
 
@@ -195,14 +201,19 @@ static void request_on_event(msg_t *self, enum event_t ev, int status, void *dat
     DEBUGF("RDATA %p %*s", self, status, (char *)data);
   } else if (ev == EVT_END) {
     DEBUGF("REND %p", self);
-    #if 1
+#if DELAY_RESPONSE
     uv_timer_init(loop, &self->timer_wait);
     self->timer_wait.data = self;
-    uv_timer_start(&self->timer_wait, request_on_timeout, 10, 0);
-    #else
+    uv_timer_start(&self->timer_wait, request_on_timeout, DELAY_RESPONSE, 0);
+#else
+# if SEPARATE_WRITE_HEAD
+    response_write_head(self, RESPONSE_HEAD, after_write);
+    response_write(self, RESPONSE_BODY, after_write);
+# else
     response_write_head(self, RESPONSE_HEAD RESPONSE_BODY, after_write);
+# endif
     response_end(self);
-    #endif
+#endif
   } else if (ev == EVT_ERROR) {
     DEBUGF("RERROR %p %d %s", self, status, (char *)data);
   }
@@ -400,18 +411,22 @@ static void client_on_read(uv_stream_t *handle, ssize_t nread, uv_buf_t buf)
 /* HTTP connection handler
 /******************************************************************************/
 
+#if FIX_EMFILE
 static int reserved_fd = 0;
+#endif
 
 static void server_on_connection(uv_stream_t *self, int status)
 {
+#if FIX_EMFILE
   if (status && uv_last_error(loop).code == UV_EMFILE) {
     close(reserved_fd);
     reserved_fd = 0;
   }
-
+#endif
   // allocate client
-  client_t *client = calloc(1, sizeof(*client));
+  client_t *client = client_alloc();
   assert(client);
+  memset(client, 0, sizeof(*client));
   DEBUGF("OPEN %p", client);
   client->on_event = client_on_event; // must have
   client->handle.data = client;
@@ -428,10 +443,12 @@ static void server_on_connection(uv_stream_t *self, int status)
   // TODO: EMFILE trick!
   // https://github.com/joyent/libuv/blob/master/src/unix/ev/ev.3#L1812-1816
   CHECK("accept", uv_accept(self, (uv_stream_t *)&client->handle));
+#if FIX_EMFILE
   if (reserved_fd == 0) {
     uv_close((uv_handle_t *)&client->handle, NULL);
     reserved_fd = open("/dev/null", O_RDONLY);
   }
+#endif
 
   // initialize HTTP parser
   http_parser_init(&client->parser, HTTP_REQUEST);
@@ -446,9 +463,10 @@ static void server_on_connection(uv_stream_t *self, int status)
 
 int main()
 {
+#if FIX_EMFILE
   // TODO: https://github.com/joyent/node/blob/v0.4/lib/net.js#L928-935
   reserved_fd = open("/dev/null", O_RDONLY);
-
+#endif
   loop = uv_default_loop();
 
   //signal(SIGPIPE, SIG_IGN);

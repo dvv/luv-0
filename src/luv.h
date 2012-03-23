@@ -79,5 +79,7 @@ uv_buf_t buf_alloc(uv_handle_t *handle, size_t size);
 void buf_free(uv_buf_t uv_buf_t);
 msg_t *msg_alloc();
 void msg_free(msg_t *msg);
+client_t *client_alloc();
+void client_free(client_t *client);
 
 #endif

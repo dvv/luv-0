@@ -105,3 +105,37 @@ void msg_free(msg_t *msg) {
   m->next = msg_freelist;
   msg_freelist = m;
 }
+
+/*
+ * HTTP client allocator
+ */
+
+typedef struct client_list_s {
+  client_t client;
+  struct client_list_s *next;
+} client_list_t;
+
+static client_list_t *client_freelist = NULL;
+
+static int NC = 0;
+
+client_t *client_alloc() {
+  client_list_t *client;
+
+  client = client_freelist;
+  if (client != NULL) {
+    client_freelist = client->next;
+    return (client_t *)client;
+  }
+
+  client = (client_list_t *)malloc(sizeof *client);
+  printf("CLIENTALLOC %d\n", ++NC);
+  return (client_t *)client;
+}
+
+void client_free(client_t *client) {
+  client_list_t *l = (client_list_t *)client;
+
+  l->next = client_freelist;
+  client_freelist = l;
+}
