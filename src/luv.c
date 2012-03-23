@@ -13,13 +13,6 @@ static uv_loop_t *loop;
 /* utility
 /******************************************************************************/
 
-static void *zmalloc(size_t n)
-{
-  void *r = malloc(n);
-  memset(r, 0, n);
-  return r;
-}
-
 static int CHECK(const char *msg, int status) {
   if (status == -1) {
     uv_err_t err = uv_last_error(loop);
@@ -38,38 +31,39 @@ static void client_timeout(client_t *self, uint64_t timeout)
 {
   //DEBUGF("TIMEOUT %p %d", self, (int)timeout);
   if (!timeout) {
-    uv_timer_stop(&self->timer_timeout);
+    //uv_timer_stop(&self->timer_timeout);
   } else {
-    uv_timer_start(&self->timer_timeout, client_on_timeout, timeout, 0);
+    //uv_timer_start(&self->timer_timeout, client_on_timeout, timeout, 0);
   }
 }
 
 // async: write is done
-static void client_after_write(uv_write_t *req, int status)
+static void client_after_write(uv_write_t *rq, int status)
 {
-  client_write_req_t *write_req = container_of(req, client_write_req_t, req);
-  if (write_req->cb) {
-    write_req->cb(status ? uv_last_error(loop).code : 0);
+  callback_t cb = rq->data;
+  if (cb) {
+    cb(status ? uv_last_error(loop).code : 0);
   }
-  free(write_req);
+  req_free((uv_req_t *)rq);
 }
 
 // write some buffers to the client
 static int client_write(client_t *self, uv_buf_t *buf, int nbuf, callback_t cb)
 {
   assert(self);
-  assert(!self->closed);
+  uv_stream_t *handle = (uv_stream_t *)&self->handle;
+  // do not write to closed stream
+  if (handle->flags & (UV_CLOSING | UV_CLOSED | UV_SHUTTING | UV_SHUT)) {
+    if (cb) cb(UV_EPIPE);
+    return;
+  }
   // stop close timer
   client_timeout(self, 0);
   // create write request
-  client_write_req_t *write_req = zmalloc(sizeof(*write_req));
-  write_req->req.data = write_req;
-  write_req->cb = cb; // memo cb, call it in client_after_write
+  uv_write_t *rq = (uv_write_t *)req_alloc();
+  rq->data = cb; // memo cb, call it in client_after_write
   // write buffers
-  return CHECK("write", uv_write(
-      &write_req->req, (uv_stream_t *)&self->handle, buf, nbuf,
-      client_after_write
-    ));
+  return CHECK("write", uv_write(rq, handle, buf, nbuf,client_after_write));
 }
 
 // async: close is done
@@ -77,9 +71,8 @@ static void client_after_close(uv_handle_t *handle)
 {
   client_t *self = handle->data;
   // fire 'close' event
-  self->on_event(self, EVT_CLOSE, uv_last_error(loop).code, NULL);
+  EVENT(self, EVT_CLOSE, uv_last_error(loop).code, NULL);
   // free allocations
-  // TODO: free self->req and its fields
   DEBUGF("CFREE %p", self);
   free(self);
 }
@@ -89,8 +82,6 @@ static void client_close(client_t *self)
 {
   // stop close timer
   client_timeout(self, 0);
-  // flush write queue
-  self->closed = 1;
   // close the handle
   uv_close((uv_handle_t *)&self->handle, client_after_close);
 }
@@ -100,11 +91,11 @@ static void client_after_shutdown(uv_shutdown_t *rq, int status)
 {
   client_t *self = rq->data;
   // fire 'end' event
-  self->on_event(self, EVT_END, uv_last_error(loop).code, NULL);
+  EVENT(self, EVT_END, uv_last_error(loop).code, NULL);
   // close the handle
   client_close(self);
   // free rq
-  free(rq);
+  req_free((uv_req_t *)rq);
 }
 
 // shutdown and close the client
@@ -113,8 +104,7 @@ static void client_shutdown(client_t *self)
   // stop close timer
   client_timeout(self, 0);
   // flush write queue
-  self->closed = 1;
-  uv_shutdown_t *rq = zmalloc(sizeof(*rq));
+  uv_shutdown_t *rq = (uv_shutdown_t *)req_alloc();
   rq->data = self;
   uv_shutdown(rq, (uv_stream_t *)&self->handle, client_after_shutdown);
 }
@@ -133,7 +123,7 @@ static void client_on_timeout(uv_timer_t *timer, int status)
 /******************************************************************************/
 
 // write headers to the client
-static int response_write_head(req_t *self, char *data, callback_t cb)
+static int response_write_head(msg_t *self, char *data, callback_t cb)
 {
   assert(!self->headers_sent);
   uv_buf_t buf = { base: data, len: strlen(data) };
@@ -142,7 +132,7 @@ static int response_write_head(req_t *self, char *data, callback_t cb)
 }
 
 // write data to the client
-static int response_write(req_t *self, char *data, callback_t cb)
+static int response_write(msg_t *self, char *data, callback_t cb)
 {
   assert(self->headers_sent);
   uv_buf_t buf = { base: data, len: strlen(data) };
@@ -150,7 +140,7 @@ static int response_write(req_t *self, char *data, callback_t cb)
 }
 
 // finalize the response
-static void response_end(req_t *self)
+static void response_end(msg_t *self)
 {
   // client is keep-alive, set keep-alive timeout upon request completion
   assert(self->headers_sent);
@@ -160,12 +150,8 @@ static void response_end(req_t *self)
     client_shutdown(self->client);
   }
   // reset
-  assert(!self->_freed);
-  self->_freed = 1;
   DEBUGF("RFREE %p", self);
-  //free((void *)self->headers);
-  //free((void *)self->url);
-  free((void *)self);
+  msg_free(self);
 }
 
 /******************************************************************************/
@@ -174,20 +160,30 @@ static void response_end(req_t *self)
 
 #define RESPONSE_HEAD \
   "HTTP/1.1 200 OK\r\n" \
-  "Connection: Keep-Alive\r\n" \
-  "Content-Type: text/plain\r\n" \
   "Content-Length: 6\r\n" \
   "\r\n"
 
-#define RESPONSE_BODY \
-  "hello\n"
+/*  "Connection: Keep-Alive\r\n" \
+  "Content-Type: text/plain\r\n" \ */
 
-static void request_on_event(req_t *self, enum event_t ev, int status, void *data)
+#define RESPONSE_BODY \
+  "Hello\n"
+
+static void after_write(int status)
 {
-  void after_write(int status)
-  {
-    DEBUGF("after_write: %d", status);
-  }
+  DEBUGF("after_write: %d", status);
+}
+
+// async: client close timer expired
+static void request_on_timeout(uv_timer_t *timer, int status)
+{
+  msg_t *self = timer->data;
+  response_write_head(self, RESPONSE_HEAD RESPONSE_BODY, after_write);
+  response_end(self);
+}
+
+static void request_on_event(msg_t *self, enum event_t ev, int status, void *data)
+{
   static uv_buf_t refbuf[] = {{
     base : "hel",
     len  : 3,
@@ -199,9 +195,14 @@ static void request_on_event(req_t *self, enum event_t ev, int status, void *dat
     DEBUGF("RDATA %p %*s", self, status, (char *)data);
   } else if (ev == EVT_END) {
     DEBUGF("REND %p", self);
-    response_write_head(self, RESPONSE_HEAD, after_write);
-    response_write(self, RESPONSE_BODY, after_write);
+    #if 1
+    uv_timer_init(loop, &self->timer_wait);
+    self->timer_wait.data = self;
+    uv_timer_start(&self->timer_wait, request_on_timeout, 10, 0);
+    #else
+    response_write_head(self, RESPONSE_HEAD RESPONSE_BODY, after_write);
     response_end(self);
+    #endif
   } else if (ev == EVT_ERROR) {
     DEBUGF("RERROR %p %d %s", self, status, (char *)data);
   }
@@ -225,25 +226,16 @@ static void client_on_event(client_t *self, enum event_t ev, int status, void *d
 
 static int message_begin_cb(http_parser *parser)
 {
-  // allocate request
   client_t *client = parser->data;
   assert(client);
-  req_t *req = zmalloc(sizeof(*req));
-  assert(req);
-  client->req = req;
-  req->client = client;
-  // assign request handler
-  req->on_event = request_on_event; // must have
-  // allocate request headers
-  //req->headers = zmalloc(1024);
-    // TODO: store (len, chunk) tuples, no strcat()
-  //req->lheaders = 0;
-  // client is keep-alive, stop close timer on new request
-  // FIXME: can be indeterminate here
-  if (http_should_keep_alive(parser)) {
-    client_timeout(client, 0);
-  }
-  DEBUGF("MESSAGE BEGIN %p %p", client, req);
+  // allocate first message
+  msg_t *msg = msg_alloc();
+  assert(msg);
+  client->msg = msg;
+  memset(msg, 0, sizeof(*msg));
+  msg->client = client;
+  msg->on_event = request_on_event;
+  DEBUGF("MESSAGE BEGIN %p %p", client, msg);
   return 0;
 }
 
@@ -251,15 +243,20 @@ static int url_cb(http_parser *parser, const char *p, size_t len)
 {
   client_t *client = parser->data;
   assert(client);
-  req_t *req = client->req;
-  assert(req);
-  //req->url = strndup(p, len);
-  //DEBUGF("MESSAGE URL %p %p", client, req);
+  msg_t *msg = client->msg;
+  assert(msg);
+  //DEBUGF("MESSAGE URL %p %p", client, msg);
+  // copy URL
+  strncat(msg->heap, p, len);
   return 0;
 }
 
 static int header_field_cb(http_parser *parser, const char *p, size_t len)
 {
+  client_t *client = parser->data;
+  assert(client);
+  msg_t *msg = client->msg;
+  assert(msg);
   /*client_t *client = parser->data;
   assert(client);
   req_t *req = client->req;
@@ -273,6 +270,10 @@ static int header_field_cb(http_parser *parser, const char *p, size_t len)
 
 static int header_value_cb(http_parser *parser, const char *p, size_t len)
 {
+  client_t *client = parser->data;
+  assert(client);
+  msg_t *msg = client->msg;
+  assert(msg);
   /*client_t *client = parser->data;
   assert(client);
   req_t *req = client->req;
@@ -288,11 +289,15 @@ static int headers_complete_cb(http_parser *parser)
 {
   client_t *client = parser->data;
   assert(client);
-  req_t *req = client->req;
-  assert(req);
+  msg_t *msg = client->msg;
+  assert(msg);
   // copy parser info
-  req->method = http_method_str(parser->method);
-  req->should_keep_alive = http_should_keep_alive(parser);
+  msg->method = http_method_str(parser->method);
+  msg->should_keep_alive = http_should_keep_alive(parser);
+  // message is keep-alive, stop close timer
+  if (msg->should_keep_alive) {
+    client_timeout(msg->client, 0);
+  }
   /*DEBUGF("HEADERS COMPLETE %p %p %s %s %s %d",
       client, req, req->method, req->url, req->headers, req->should_keep_alive
     );*/
@@ -304,18 +309,18 @@ static int headers_complete_cb(http_parser *parser)
     p += strlen(p) + 1;
   }*/
   // run 'request' handler
-  client->on_event(client, EVT_REQUEST, 0, NULL);
-  return 0;
+  EVENT(client, EVT_REQUEST, 0, NULL);
+  return 0; // 1 to skip body!
 }
 
 static int body_cb(http_parser *parser, const char *p, size_t len)
 {
   client_t *client = parser->data;
   assert(client);
-  req_t *req = client->req;
-  assert(req);
-  DEBUGF("MESSAGE BODY %p %p", client, req);
-  req->on_event(req, EVT_DATA, len, (void *)p);
+  msg_t *msg = client->msg;
+  assert(msg);
+  DEBUGF("MESSAGE BODY %p %p", client, msg);
+  EVENT(msg, EVT_DATA, len, (void *)p);
   return 0;
 }
 
@@ -335,53 +340,44 @@ static int message_complete_cb(http_parser *parser)
 {
   client_t *client = parser->data;
   assert(client);
-  req_t *req = client->req;
-  assert(req);
-  DEBUGF("MESSAGE COMPLETE %p %p", client, req);
+  msg_t *msg = client->msg;
+  assert(msg);
+  DEBUGF("MESSAGE COMPLETE %p %p", client, msg);
   // fire 'end' event
-  req->on_event(req, EVT_END, 0, NULL);
+  EVENT(msg, EVT_END, 0, NULL);
   // reset parser
+  client->msg = NULL;
   http_parser_execute(parser, &parser_settings, NULL, 0);
   return 0;
 }
 
 /******************************************************************************/
-/* HTTP connection handler
+/* HTTP client reader
 /******************************************************************************/
-
-static uv_buf_t client_on_alloc(uv_handle_t *handle, size_t suggested_size)
-{
-  uv_buf_t buf;
-  buf.base = zmalloc(suggested_size);
-  buf.len = suggested_size;
-  return buf;
-}
 
 static void client_on_read(uv_stream_t *handle, ssize_t nread, uv_buf_t buf)
 {
   client_t *self = handle->data;
   assert(self);
-  assert(!self->closed);
-  req_t *req = self->req;
+  msg_t *msg = self->msg;
 
   //DEBUGF("READ %p %d %p %d", self, nread, req, req ? req->upgrade : 0);
 
   if (nread > 0) {
     // once in "upgrade" mode, the protocol is no longer HTTP
     // and data should bypass parser
-    CHECK("junk", req && req->_freed > 1);
-    if (req && req->upgrade) {
-      req->on_event(req, EVT_DATA, nread, buf.base);
+    if (msg && msg->upgrade) {
+      assert("junk" == NULL);
+      EVENT(msg, EVT_DATA, nread, buf.base);
     } else {
-      size_t nparsed;
-      nparsed = http_parser_execute(
+      size_t nparsed = http_parser_execute(
           &self->parser, &parser_settings, buf.base, nread
         );
       if (nparsed < nread) {
         // reset parser
         http_parser_execute(&self->parser, &parser_settings, NULL, 0);
         // report parse error
-        req->on_event(req, EVT_ERROR, UV_UNKNOWN, "parse error");
+        EVENT(msg, EVT_ERROR, UV_UNKNOWN, "parse error");
       }
     }
   // don't route empty chunks to the parser
@@ -390,14 +386,19 @@ static void client_on_read(uv_stream_t *handle, ssize_t nread, uv_buf_t buf)
   } else {
     uv_err_t err = uv_last_error(loop);
     DEBUGF("READERROR %p %d", self, err.code);
+    // N.B. must close stream on read error, or libuv assertion fails
     client_close(self);
     if (err.code != UV_EOF && err.code != UV_ECONNRESET) {
-      req->on_event(req, EVT_ERROR, err.code, NULL);
+      EVENT(msg, EVT_ERROR, err.code, NULL);
     }
   }
 
-  free(buf.base);
+  buf_free(buf);
 }
+
+/******************************************************************************/
+/* HTTP connection handler
+/******************************************************************************/
 
 static int reserved_fd = 0;
 
@@ -409,7 +410,8 @@ static void server_on_connection(uv_stream_t *self, int status)
   }
 
   // allocate client
-  client_t *client = zmalloc(sizeof(*client));
+  client_t *client = calloc(1, sizeof(*client));
+  assert(client);
   DEBUGF("OPEN %p", client);
   client->on_event = client_on_event; // must have
   client->handle.data = client;
@@ -435,7 +437,7 @@ static void server_on_connection(uv_stream_t *self, int status)
   http_parser_init(&client->parser, HTTP_REQUEST);
 
   // start reading client
-  uv_read_start((uv_stream_t *)&client->handle, client_on_alloc, client_on_read);
+  uv_read_start((uv_stream_t *)&client->handle, buf_alloc, client_on_read);
 }
 
 /******************************************************************************/
@@ -444,6 +446,7 @@ static void server_on_connection(uv_stream_t *self, int status)
 
 int main()
 {
+  // TODO: https://github.com/joyent/node/blob/v0.4/lib/net.js#L928-935
   reserved_fd = open("/dev/null", O_RDONLY);
 
   loop = uv_default_loop();
