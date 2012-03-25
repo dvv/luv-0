@@ -13,9 +13,9 @@ all: luv
 
 luv: src/luv.c src/alloc.c $(LIBS)
 	$(CC) -pipe -g $(CFLAGS) -o $@ $^ $(LDFLAGS) -lpthread -lm -lrt
-	#gdb ./luv
+	#nemiver ./luv
 	#valgrind --leak-check=full --show-reachable=yes -v ./luv
-	#chpst -o 2048 ./luv
+	chpst -o 2048 ./luv
 
 profile: luv
 	chpst -o 2048 valgrind --tool=callgrind --dump-instr=yes --simulate-cache=yes --collect-jumps=yes ./luv

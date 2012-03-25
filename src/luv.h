@@ -29,17 +29,19 @@ enum {
 
 enum event_t {
   EVT_ERROR = 1,
+  EVT_REQUEST,
   EVT_DATA,
   EVT_END,
+  EVT_SHUT,
   EVT_CLOSE,
-  EVT_REQUEST,
 };
-
-typedef void (*callback_data_t)(const char *data);
-typedef void (*callback_t)(int status);
 
 typedef struct client_s client_t;
 typedef struct msg_s msg_t;
+
+typedef void (*callback_data_t)(const char *data);
+typedef void (*callback_t)(int status);
+typedef void (*event_cb)(client_t *self, msg_t *msg, enum event_t ev, int status, void *data);
 
 struct msg_s {
   client_t *client;
@@ -48,8 +50,8 @@ struct msg_s {
   int should_keep_alive;
   uint8_t headers_sent : 1;
   uv_timer_t timer_wait;
+  size_t heap_len;
   char heap[4096]; // collect url and headers
-  void (*on_event)(msg_t *self, enum event_t ev, int status, void *data);
 };
 
 struct client_s {
@@ -57,12 +59,12 @@ struct client_s {
   uv_timer_t timer_timeout; // inactivity close timer
   http_parser parser;
   msg_t *msg;
-  void (*on_event)(client_t *self, enum event_t ev, int status, void *data);
+  event_cb on_event;
 };
 
 #define EVENT(self, params...) (self)->on_event((self), params)
 
-#if 0
+#if 1
 # define DEBUG(fmt) fprintf(stderr, fmt "\n")
 # define DEBUGF(fmt, params...) fprintf(stderr, fmt "\n", params)
 #else
