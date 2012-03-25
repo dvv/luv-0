@@ -10,6 +10,26 @@
 static lua_State *LLL;
 static int cb_ref;
 
+static int l_msg(lua_State *L)
+{
+  const msg_t *msg = lua_touserdata(L, 1);
+  //printf("MMM: %p\n", msg);
+  if (!msg) {
+    lua_pushnil(L);
+  } else {
+    lua_createtable(L, 0, 3);
+    luaL_getmetatable(L, "uhttp.msg");
+    lua_setmetatable(L, -2);
+    lua_pushstring(L, msg->method);
+    lua_setfield(L, -2, "method");
+    lua_pushboolean(L, msg->should_keep_alive);
+    lua_setfield(L, -2, "should_keep_alive");
+    lua_pushboolean(L, msg->upgrade);
+    lua_setfield(L, -2, "upgrade");
+  }
+  return 1;
+}
+
 static void on_event(client_t *self, msg_t *msg, enum event_t ev, int status, void *data)
 {
   lua_State *L = LLL;
@@ -20,6 +40,10 @@ static void on_event(client_t *self, msg_t *msg, enum event_t ev, int status, vo
   lua_pushinteger(L, status);
   lua_pushlightuserdata(L, data);
   lua_call(L, 5, 0);
+
+  /*luaL_getmetatable(L, "luv_tcp");
+  lua_setmetatable(L, -2);*/
+
 }
 
 static int l_make_server(lua_State *L)
@@ -48,15 +72,24 @@ static int l_respond(lua_State *L) {
 
 static const luaL_Reg exports[] = {
   { "make_server", l_make_server },
+  { "msg", l_msg },
   { "respond", l_respond },
   { NULL, NULL }
 };
 
 LUALIB_API int luaopen_luv(lua_State *L) {
 
+  luaL_newmetatable(L, "uhttp.msg");
+  lua_pushstring(L, "__index");
+  lua_pushvalue(L, -2);
+  lua_settable(L, -3);
+  lua_pushcfunction(L, l_respond);
+  lua_setfield(L, -2, "send");
+  lua_pop(L, 1);
+
   /* module table */
   lua_newtable(L);
-  luaL_register(L, NULL, exports);
+  luaL_register(L, "LUV", exports);
 
   return 1;
 }
