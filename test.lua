@@ -8,6 +8,9 @@ print('BAR', LUV)--make_server)
 
 local RESPONSE = "HTTP/1.1 200 OK\r\nContent-Length: 6\r\n\r\nHello\n"
 
+local m = LUV.mmm()
+debug('m', m, m.method, m.send)
+
 LUV.make_server(8080, '0.0.0.0', 128, function (client, msg, ev, int, void)
   debug('EVENT', client, msg, ev, int, void)
   local M = LUV.msg(msg)

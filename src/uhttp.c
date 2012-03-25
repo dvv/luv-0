@@ -460,7 +460,6 @@ uv_tcp_t *server_init(
 {
   uv_tcp_t *server = calloc(1, sizeof(*server));
   server->data = on_event; // store message event handler
-  //uv_tcp_init(loop, server);
   uv_tcp_init(uv_default_loop(), server);
   struct sockaddr_in address = uv_ip4_addr(host, port);
   CHECK("bind", uv_tcp_bind(server, address));

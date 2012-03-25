@@ -26,6 +26,21 @@ static int l_msg(lua_State *L)
     lua_setfield(L, -2, "should_keep_alive");
     lua_pushboolean(L, msg->upgrade);
     lua_setfield(L, -2, "upgrade");
+    // url
+    const char *p = msg->heap;
+    lua_pushstring(L, p);
+    lua_setfield(L, -2, "url");
+    // headers
+    lua_newtable(L);
+    p += strlen(p) + 1;
+    while (*p) {
+      const char *name = p;
+      p += strlen(p) + 1;
+      lua_pushstring(L, p);
+      lua_setfield(L, -2, string_lower(name));
+      p += strlen(p) + 1;
+    }
+    lua_setfield(L, -2, "headers");
   }
   return 1;
 }
@@ -66,6 +81,14 @@ static int l_respond(lua_State *L) {
   return 0;
 }
 
+static int l_mmm(lua_State *L) {
+  msg_t *self = lua_newuserdata(L, sizeof(*self));
+  self->method = "AAA";
+  luaL_getmetatable(L, "uhttp.msg");
+  lua_setmetatable(L, -2);
+  return 1;
+}
+
 /******************************************************************************/
 /* module
 /******************************************************************************/
@@ -74,6 +97,7 @@ static const luaL_Reg exports[] = {
   { "make_server", l_make_server },
   { "msg", l_msg },
   { "respond", l_respond },
+  { "mmm", l_mmm },
   { NULL, NULL }
 };
 
