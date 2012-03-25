@@ -29,6 +29,7 @@ enum {
 
 enum event_t {
   EVT_ERROR = 1,
+  EVT_OPEN,
   EVT_REQUEST,
   EVT_DATA,
   EVT_END,
@@ -64,7 +65,7 @@ struct client_s {
 
 #define EVENT(self, params...) (self)->on_event((self), params)
 
-#if 1
+#if 0
 # define DEBUG(fmt) fprintf(stderr, fmt "\n")
 # define DEBUGF(fmt, params...) fprintf(stderr, fmt "\n", params)
 #else
@@ -72,16 +73,15 @@ struct client_s {
 # define DEBUGF(fmt, params...) do {} while (0)
 #endif
 
-static void client_timeout(client_t *self, uint64_t timeout);
-static void client_on_timeout(uv_timer_t *timer, int status);
+uv_tcp_t *server_init(
+    int port,
+    const char *host,
+    int backlog_size,
+    event_cb on_event
+  );
 
-uv_req_t *req_alloc();
-void req_free(uv_req_t *uv_req);
-uv_buf_t buf_alloc(uv_handle_t *handle, size_t size);
-void buf_free(uv_buf_t uv_buf_t);
-msg_t *msg_alloc();
-void msg_free(msg_t *msg);
-client_t *client_alloc();
-void client_free(client_t *client);
+int response_write_head(msg_t *self, const char *data, callback_t cb);
+int response_write(msg_t *self, const char *data, callback_t cb);
+void response_end(msg_t *self);
 
 #endif
