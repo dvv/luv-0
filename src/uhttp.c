@@ -209,6 +209,8 @@ static void client_after_close(uv_handle_t *handle)
   client_t *self = handle->data;
   // fire 'close' event
   EVENT(self, NULL, EVT_CLOSE, last_err().code, NULL);
+  // dispose close timer
+  uv_close((uv_handle_t *)&self->timer_timeout, NULL);
   // free self
   client_free(self);
 }
@@ -276,6 +278,7 @@ static int url_cb(http_parser *parser, const char *p, size_t len)
   msg_t *msg = client->msg;
   assert(msg);
   // memo URL
+  // TODO: fix overflow!
   strncat(msg->heap, p, len);
   msg->heap_len += len;
   return 0;
@@ -288,19 +291,15 @@ static int header_field_cb(http_parser *parser, const char *p, size_t len)
   msg_t *msg = client->msg;
   assert(msg);
   // memo header name
+  // TODO: fix overflow!
   int new = (parser->state == 47 && msg->heap_len) ? 1 : 0; // s_header_field?
-#if 1
   {
-  // lower case and store
+  // lower case and append to the heap
   size_t i;
   char *s = msg->heap + msg->heap_len + new;
   for (i = 0; i < len; ++i) *s++ = tolower(p[i]);
   *s++ = '\0';
   }
-#else
-  // store
-  strncat(msg->heap + msg->heap_len + new, p, len);
-#endif
   msg->heap_len += len + new;
   return 0;
 }
@@ -312,7 +311,9 @@ static int header_value_cb(http_parser *parser, const char *p, size_t len)
   msg_t *msg = client->msg;
   assert(msg);
   // memo header value
+  // TODO: fix overflow!
   int new = parser->state == 50 ? 1 : 0; // s_header_value?
+  // append to the heap
   strncat(msg->heap + msg->heap_len + new, p, len);
   msg->heap_len += len + new;
   return 0;
@@ -330,6 +331,15 @@ static int headers_complete_cb(http_parser *parser)
   // message is keep-alive, stop close timer
   if (msg->should_keep_alive) {
     client_timeout(msg->client, 0);
+  }
+  // activate pipeline for idempotent methods
+  switch (parser->method) {
+    case HTTP_GET:
+    case HTTP_HEAD:
+    case HTTP_PUT:
+    case HTTP_DELETE:
+    // TODO: you name others
+      msg->should_pipeline = 1;
   }
   // run 'request' handler
   EVENT(client, msg, EVT_REQUEST, 0, NULL);

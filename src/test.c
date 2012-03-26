@@ -1,5 +1,7 @@
 #include "uhttp.h"
 
+
+
 #define RESPONSE_HEAD \
   "HTTP/1.1 200 OK\r\n" \
   "Content-Length: 6\r\n" \
@@ -51,6 +53,8 @@ static void client_on_event(client_t *self, msg_t *msg, enum event_t ev, int sta
 
 int main()
 {
+printf("MSG %d\n", sizeof(msg_t));
+
   uv_loop_t *loop = uv_default_loop();
 
   // N.B. let libuv catch EPIPE

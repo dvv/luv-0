@@ -42,17 +42,18 @@ typedef struct msg_s msg_t;
 
 typedef void (*callback_data_t)(const char *data);
 typedef void (*callback_t)(int status);
-typedef void (*event_cb)(client_t *self, msg_t *msg, enum event_t ev, int status, void *data);
+typedef void (*event_cb)(client_t *self, msg_t *msg, enum event_t ev,
+    int status, void *data);
 
 struct msg_s {
   client_t *client;
   const char *method;
-  int upgrade;
-  int should_keep_alive;
-  uint8_t headers_sent : 1;
-  uv_timer_t timer_wait;
+  int upgrade : 1;
+  int should_keep_alive : 1;
+  int should_pipeline : 1;
+  int headers_sent : 1;
   size_t heap_len;
-  char heap[4096]; // collect url and headers
+  char heap[4096 + HTTP_MAX_HEADER_SIZE]; // collect url and headers
 };
 
 struct client_s {
