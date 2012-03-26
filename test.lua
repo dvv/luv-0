@@ -1,25 +1,34 @@
 #!/usr/bin/env luvit
 
-print('FOO')
 local setmetatable = setmetatable
-print('FUB')
+local Table = require('table')
+--local delay = require('timer').setTimeout
 local LUV = require('./luv')
-print('BAR', LUV)--make_server)
+p('LUV', LUV)
 
-local RESPONSE = "HTTP/1.1 200 OK\r\nContent-Length: 6\r\n\r\nHello\n"
+local RESPONSE_TABLE = {'H','e','llo','\n'}
+local RESPONSE_BODY = ('Hello\n'):rep(1)
+local RESPONSE = "HTTP/1.1 200 OK\r\nContent-Length: 6\r\n\r\n" .. RESPONSE_BODY
 
-local m = LUV.mmm()
-debug('m', m, m.method, m.send)
+local function Message(handle)
+  local self = LUV.msg(handle)
+  if self then
+    self.send = function (self, ...) LUV.send(handle, ...) end
+  end
+  return self
+end
 
-LUV.make_server(8080, '0.0.0.0', 128, function (client, msg, ev, int, void)
-  debug('EVENT', client, msg, ev, int, void)
-  local M = LUV.msg(msg)
-  if ev == 5 then
-    debug('METH', M, M and M.send)
-    --response_write_head(msg, RESPONSE_HEAD, nil)
-    --response_end(msg)
-    LUV.respond(msg, RESPONSE)
-    --M:send(RESPONSE)
+LUV.make_server(8080, '0.0.0.0', 128, function (msg, ev, ...)
+  --debug('EVENT', msg, ev, ...)
+  --local m = Message(msg)
+  if ev == LUV.END then
+    --debug('METH', m)
+    delay(0, function ()
+    --m:send(200, RESPONSE_BODY, {
+    LUV.send(msg, 200, RESPONSE_BODY, {
+      ['Content-Length'] = #RESPONSE_BODY
+    })
+    end)
   end
 end)
 print('Server listening to http://*:8080. CTRL+C to exit.')

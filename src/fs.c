@@ -6,14 +6,15 @@
 #include "uv.h"
 
 typedef void (*callback_t)(int status);
-typedef void (*progress_t)(int status);
+typedef void (*callback_fs_t)(uv_fs_t *rq);
+typedef void (*progress_t)(uv_fs_t *rq, const char *data, size_t len, callback_fs_t cb);
 
 typedef struct read_s {
   uv_loop_t *loop;
   uv_fs_t rq;
   uv_file fd;
   callback_t on_end;
-  callback_t on_progress;
+  progress_t on_progress;
   size_t offset;
   size_t size;
   size_t CHUNK_SIZE;
@@ -29,11 +30,22 @@ static void on_close(uv_fs_t *rq)
 {
   read_t *read = rq->data;
   uv_fs_req_cleanup(rq);
-printf("CLOSE %d %p\n", rq->result, read->on_end);
   if (read->on_end) {
+printf("CLOSE %d %p\n", rq->result, read->on_end);
     read->on_end(last_err().code);
   }
   free(rq->data);
+}
+
+static void on_read(uv_fs_t *rq);
+
+static void on_write(uv_fs_t *rq)
+{
+  read_t *read = rq->data;
+  size_t nread = rq->result;
+  read->offset += nread;
+  read->size -= nread;
+  uv_fs_read(read->loop, rq, read->fd, &read->buf, read->CHUNK_SIZE, read->offset, on_read);
 }
 
 static void on_read(uv_fs_t *rq)
@@ -42,22 +54,33 @@ static void on_read(uv_fs_t *rq)
   uv_fs_req_cleanup(rq);
 printf("READ %d %p\n", rq->result, read->on_end);
   if (rq->result <= 0) {
+    if (read->on_end) {
+      read->on_end(last_err().code);
+      read->on_end = NULL;
+    }
     uv_fs_close(read->loop, rq, read->fd, on_close);
   } else {
     size_t nread = rq->result;
-    read->offset += nread;
-    read->size -= nread;
-    uv_fs_read(read->loop, rq, read->fd, &read->buf, read->CHUNK_SIZE, read->offset, on_read);
+    if (read->on_progress) {
+      read->on_progress(rq, read->buf, nread, on_write);
+    } else {
+      on_write(rq);
+    }
   }
 }
 
 static void on_open(uv_fs_t *rq)
 {
   read_t *read = rq->data;
-printf("OPEN %d %p\n", rq->result, read->on_end);
   if (rq->result == -1) {
+printf("OPENERR %d\n", last_err().code);
+    if (read->on_end) {
+      read->on_end(last_err().code);
+      read->on_end = NULL;
+    }
     on_close(rq);
   } else {
+printf("OPEN %d %p\n", last_err().code, read->on_end);
     read->fd = rq->result;
     uv_fs_req_cleanup(rq);
     size_t len = read->size < read->CHUNK_SIZE ? read->size : read->CHUNK_SIZE;
@@ -84,19 +107,23 @@ void stream_file(
   read->on_progress = on_progress;
   read->on_end = on_end;
   read->CHUNK_SIZE = CHUNK_SIZE;
-printf("OPEN? %p\n", read->on_end);
-  int rc = uv_fs_open(read->loop, &read->rq, path, O_RDONLY, 0644, on_open);
-printf("OPEN! %d %p\n", rc, read->on_end);
+  uv_fs_open(read->loop, &read->rq, path, O_RDONLY, 0644, on_open);
 }
 
 void on_end(int status)
 {
-  printf("DONE %d\n", status);
+  printf("END %d\n", status);
+}
+
+void on_progress(uv_fs_t *rq, const char *data, size_t len, callback_fs_t cb)
+{
+printf("DATA: %*s", len, data);
+  cb(rq);
 }
 
 int main()
 {
-  stream_file(uv_default_loop(), "fs.c", 0, -1, NULL, on_end, 100);
+  stream_file(uv_default_loop(), "src/fs.c", 0, -1, on_progress, on_end, 100);
   uv_run(uv_default_loop());
   return 0;
 }

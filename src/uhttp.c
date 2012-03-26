@@ -208,7 +208,7 @@ static void client_after_close(uv_handle_t *handle)
 {
   client_t *self = handle->data;
   // fire 'close' event
-  EVENT(self, NULL, EVT_CLOSE, last_err().code, NULL);
+  EVENT(self, self->msg, EVT_CLOSE, last_err().code, NULL);
   // dispose close timer
   uv_close((uv_handle_t *)&self->timer_timeout, NULL);
   // free self
@@ -229,7 +229,7 @@ static void client_after_shutdown(uv_shutdown_t *rq, int status)
 {
   client_t *self = rq->data;
   // fire 'shut' event
-  EVENT(self, NULL, EVT_SHUT, last_err().code, NULL);
+  EVENT(self, self->msg, EVT_SHUT, last_err().code, NULL);
   // close the handle
   client_close(self);
   req_free((uv_req_t *)rq);
@@ -485,20 +485,42 @@ uv_tcp_t *server_init(
 /* HTTP response methods
 /******************************************************************************/
 
+/*
+const char *STATUS_CODES[6][] = {
+  {},
+  { "Continue", "Switching Protocols", "Processing" },
+  { "OK", "Created", "Accepted", "Non-Authoritative Information", "No Content",
+    "Reset Content", "Partial Content", "Multi-Status" },
+  { "Multiple Choices", "Moved Permanently", "Moved Temporarily", "See Other",
+    "Not Modified", "Use Proxy", "306", "Temporary Redirect" },
+  { "Bad Request", "Unauthorized", "Payment Required", "Forbidden", "Not Found",
+    "Method Not Allowed", "Not Acceptable", "Proxy Authentication Required",
+    "Request Time-out", "Conflict", "Gone", "Length Required",
+    "Precondition Failed", "Request Entity Too Large", "Request-URI Too Large",
+    "Unsupported Media Type", "Requested Range Not Satisfiable",
+    "Expectation Failed", "I'm a teapot", "419", "420", "421",
+    "Unprocessable Entity", "Locked", "Failed Dependency",
+    "Unordered Collection", "Upgrade Required" },
+  { "Internal Server Error", "Not Implemented", "Bad Gateway",
+    "Service Unavailable", "Gateway Time-out", "HTTP Version not supported",
+    "Variant Also Negotiates", "Insufficient Storage", "508",
+    "Bandwidth Limit Exceeded", "Not Extended" }
+};*/
+
 // write headers to the client
-int response_write_head(msg_t *self, const char *data, callback_t cb)
+int response_write_head(msg_t *self, const char *data, size_t len, callback_t cb)
 {
   assert(!self->headers_sent);
-  uv_buf_t buf = { base: (char *)data, len: strlen(data) };
+  uv_buf_t buf = { base: (char *)data, len: len };
   self->headers_sent = 1;
   return client_write(self->client, &buf, 1, cb);
 }
 
 // write data to the client
-int response_write(msg_t *self, const char *data, callback_t cb)
+int response_write(msg_t *self, const char *data, size_t len, callback_t cb)
 {
   assert(self->headers_sent);
-  uv_buf_t buf = { base: (char *)data, len: strlen(data) };
+  uv_buf_t buf = { base: (char *)data, len: len };
   return client_write(self->client, &buf, 1, cb);
 }
 
