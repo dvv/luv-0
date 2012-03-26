@@ -37,7 +37,7 @@ static int l_msg(lua_State *L)
       const char *name = p;
       p += strlen(p) + 1;
       lua_pushstring(L, p);
-      lua_setfield(L, -2, string_lower(name));
+      lua_setfield(L, -2, name);
       p += strlen(p) + 1;
     }
     lua_setfield(L, -2, "headers");

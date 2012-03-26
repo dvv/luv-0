@@ -289,7 +289,18 @@ static int header_field_cb(http_parser *parser, const char *p, size_t len)
   assert(msg);
   // memo header name
   int new = (parser->state == 47 && msg->heap_len) ? 1 : 0; // s_header_field?
+#if 1
+  {
+  // lower case and store
+  size_t i;
+  char *s = msg->heap + msg->heap_len + new;
+  for (i = 0; i < len; ++i) *s++ = tolower(p[i]);
+  *s++ = '\0';
+  }
+#else
+  // store
   strncat(msg->heap + msg->heap_len + new, p, len);
+#endif
   msg->heap_len += len + new;
   return 0;
 }
@@ -320,15 +331,6 @@ static int headers_complete_cb(http_parser *parser)
   if (msg->should_keep_alive) {
     client_timeout(msg->client, 0);
   }
-  /*const char *p = msg->heap;
-  DEBUGF("URL %s", p);
-  p += strlen(p) + 1;
-  while (*p) {
-    DEBUGF("NAME %s", p);
-    p += strlen(p) + 1;
-    DEBUGF("VALUE %s", p);
-    p += strlen(p) + 1;
-  }*/
   // run 'request' handler
   EVENT(client, msg, EVT_REQUEST, 0, NULL);
   return 0; // 1 to skip body!
@@ -496,7 +498,7 @@ void response_end(msg_t *self)
   // client is keep-alive, set keep-alive timeout upon request completion
   assert(self->headers_sent);
   if (self->should_keep_alive) {
-    client_timeout(self->client, 75);
+    client_timeout(self->client, 500);
   } else {
     client_shutdown(self->client);
   }

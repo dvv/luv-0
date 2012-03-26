@@ -56,7 +56,7 @@ int main()
   // N.B. let libuv catch EPIPE
   signal(SIGPIPE, SIG_IGN);
 
-  uv_tcp_t *server = server_init(8080, "0.0.0.0", 128, client_on_event);
+  uv_tcp_t *server = server_init(8080, "0.0.0.0", 1024, client_on_event);
 
   // REPL?
 
