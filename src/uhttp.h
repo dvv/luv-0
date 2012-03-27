@@ -54,6 +54,8 @@ struct msg_s {
   int should_pipeline : 1;
   int headers_sent : 1;
   int chunked : 1;
+  int has_content_length : 1;
+  int has_transfer_encoding : 1;
   size_t heap_len;
   // TODO: reconsider
   char heap[4096 + HTTP_MAX_HEADER_SIZE]; // collect url and headers
@@ -69,7 +71,7 @@ struct client_s {
 
 #define EVENT(self, params...) (self)->on_event((self), params)
 
-#if 1
+#if 0
 # define DEBUG(fmt) fprintf(stderr, fmt "\n")
 # define DEBUGF(fmt, params...) fprintf(stderr, fmt "\n", params)
 #else

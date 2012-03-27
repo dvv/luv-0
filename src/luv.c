@@ -110,15 +110,17 @@ static int l_make_server(lua_State *L)
 static int l_send(lua_State *L)
 {
   size_t len;
-  const char *data;
+  const char *s;
+  uv_buf_t bufs;
+  luaL_Buffer b;
+
   //self, body, code, headers, do-not-end
   msg_t *self = lua_touserdata(L, 1);
-self->chunked = 1;
   int code = luaL_optint(L, 3, 0);
-  // empty output buffer
-  luaL_Buffer b;
+  int finish = lua_toboolean(L, 5) == 0;
+
+  // collect code and headers
   luaL_buffinit(L, &b);
-  // send code and headers unless already sent
   if (!self->headers_sent && (code || lua_istable(L, 4))) {
     if (code) {
       self->headers_sent = 1;
@@ -137,21 +139,29 @@ self->chunked = 1;
       self->headers_sent = 1;
       lua_pushnil(L);
       while (lua_next(L, 4) != 0) {
+        s = lua_tostring(L, -2);
+        if (strcasecmp(s, "content-length") == 0) {
+          self->has_content_length = 1;
+        } else if (strcasecmp(s, "transfer-encoding") == 0) {
+          self->has_transfer_encoding = 1;
+        }
         lua_pushvalue(L, -2);
         luaL_addvalue(&b);
         luaL_addstring(&b, ": ");
         luaL_addvalue(&b);
         luaL_addstring(&b, "\r\n");
       }
-      if (self->chunked) {
+      if (!self->has_content_length && !self->has_transfer_encoding) {
         luaL_addstring(&b, "Transfer-Encoding: chunked\r\n");
+        self->has_transfer_encoding = 1;
+        self->chunked = 1;
       }
       luaL_addstring(&b, "\r\n");
     }
   }
-  luaL_pushresult(&b); // headers on the stack
-  // TODO: flush headers and honor chunked encoding
-  // append body
+  luaL_pushresult(&b); // headers
+
+  // collect body
   luaL_buffinit(L, &b);
   // table case
   if (lua_istable(L, 2)) {
@@ -165,38 +175,46 @@ self->chunked = 1;
     lua_pushvalue(L, 2);
     luaL_addvalue(&b);
   }
-  // concat body
   luaL_pushresult(&b); // headers, body
+
+  // chunked encoding wraps the body
   if (self->chunked) {
-    data = luaL_checklstring(L, -1, &len);
-    luaL_buffinit(L, &b);
-    char *s = luaL_prepbuffer(&b);
-    sprintf(s, "%x\r\n", len);
-    luaL_addsize(&b, strlen(s));
-    luaL_addvalue(&b);
-    luaL_addstring(&b, "\r\n");
-  } else {
-    luaL_addvalue(&b);
+    len = lua_objlen(L, -1);
+    if (len > 0) {
+      luaL_buffinit(L, &b);
+      s = luaL_prepbuffer(&b);
+      sprintf((char *)s, "%lx\r\n", len);
+      luaL_addsize(&b, strlen(s));
+      luaL_addvalue(&b);
+      luaL_addstring(&b, "\r\n");
+      // finishing chunk
+      if (finish) {
+        luaL_addstring(&b, "0\r\n\r\n");
+      }
+      luaL_pushresult(&b); // headers, chunked body
+    }
   }
-  // concat
-  luaL_pushresult(&b); // headers, body
-  data = luaL_checklstring(L, -1, &len);
-  lua_pop(L, 1);
-//printf("SEND %*s\n", len, data);
-  response_write(self, data, len, NULL);
+
+  // concat: headers + body
+  lua_concat(L, 2);
+  s = luaL_checklstring(L, -1, &len);
+//printf("SEND %*s\n", len, s);
+  response_write(self, s, len, NULL);
   // finish response
-  if (lua_toboolean(L, 5) == 0) {
+  if (finish) {
     response_end(self, 0);
   }
-  return 0;
+
+  return 1;
 }
 
 // start the response
 static int l_write_head(lua_State *L)
 {
+  const char *s;
+  size_t len;
   //self, code, headers
   msg_t *self = lua_touserdata(L, 1);
-self->chunked = 1;
   assert(self->headers_sent == 0);
   self->headers_sent = 1;
   int code = luaL_checkint(L, 2);
@@ -216,29 +234,37 @@ self->chunked = 1;
   if (lua_istable(L, 3)) {
     lua_pushnil(L);
     while (lua_next(L, 3) != 0) {
+      /*s = lua_tostring(L, -2);
+      if (strcasecmp(s, "content-length") == 0) {
+        self->has_content_length = 1;
+      } else if (strcasecmp(s, "transfer-encoding") == 0) {
+        self->has_transfer_encoding = 1;
+      }*/
       lua_pushvalue(L, -2);
       luaL_addvalue(&b);
       luaL_addstring(&b, ": ");
       luaL_addvalue(&b);
       luaL_addstring(&b, "\r\n");
     }
-    if (self->chunked) {
+    /*if (!self->has_content_length && !self->has_transfer_encoding) {
       luaL_addstring(&b, "Transfer-Encoding: chunked\r\n");
-    }
+      self->has_transfer_encoding = 1;
+      self->chunked = 1;
+    }*/
   }
   luaL_addstring(&b, "\r\n");
   // concat
   luaL_pushresult(&b);
-  size_t len;
-  const char *data = luaL_checklstring(L, -1, &len);
-  lua_pop(L, 1);
-  response_write(self, data, len, NULL);
-  return 0;
+  s = luaL_checklstring(L, -1, &len);
+  response_write(self, s, len, NULL);
+  return 1;
 }
 
 // write to response
 static int l_write(lua_State *L)
 {
+  const char *s;
+  size_t len;
   //self, body
   msg_t *self = lua_touserdata(L, 1);
   assert(self->headers_sent != 0);
@@ -259,19 +285,17 @@ static int l_write(lua_State *L)
   }
   // concat
   luaL_pushresult(&b);
-  size_t len;
-  const char *data = luaL_checklstring(L, -1, &len);
-  lua_pop(L, 1);
+  s = luaL_checklstring(L, -1, &len);
   if (self->chunked) {
-    char s[128];
-    sprintf(s, "%x\r\n", len);
-    response_write(self, s, strlen(s), NULL);
+    char t[128];
+    sprintf(t, "%lx\r\n", len);
+    response_write(self, t, strlen(t), NULL);
   }
-  response_write(self, data, len, NULL);
+  response_write(self, s, len, NULL);
   if (self->chunked) {
     response_write(self, "\r\n", 2, NULL);
   }
-  return 0;
+  return 1;
 }
 
 // finalize the response

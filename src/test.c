@@ -1,6 +1,6 @@
 #include "uhttp.h"
 
-#define DELAY_RESPONSE 100
+//#define DELAY_RESPONSE 100
 
 #define RESPONSE_HEAD \
   "HTTP/1.1 200 OK\r\n" \
@@ -24,8 +24,9 @@
 static void on_timeout(uv_timer_t *timer, int status)
 {
   msg_t *msg = timer->data;
-  response_write_head(msg, RESPONSE_HEAD RESPONSE_BODY, 44, NULL);
-  response_end(msg);
+  response_write(msg, RESPONSE_HEAD RESPONSE_BODY, 44, NULL);
+  msg->headers_sent = 1;
+  response_end(msg, 0);
   uv_close((uv_handle_t *)timer, NULL);
 }
 
@@ -59,8 +60,9 @@ static void client_on_event(client_t *self, msg_t *msg, enum event_t ev, int sta
     uv_timer_init(self->handle.loop, &timer);
     uv_timer_start(&timer, on_timeout, DELAY_RESPONSE, 0);
 #else
-    response_write_head(msg, RESPONSE_HEAD RESPONSE_BODY, 44, NULL);
-    response_end(msg);
+    response_write(msg, RESPONSE_HEAD RESPONSE_BODY, 44, NULL);
+    msg->headers_sent = 1;
+    response_end(msg, 0);
 #endif
   } else if (ev == EVT_ERROR) {
     DEBUGF("RERROR %p %d %s", msg, status, (char *)data);
@@ -69,7 +71,7 @@ static void client_on_event(client_t *self, msg_t *msg, enum event_t ev, int sta
 
 int main()
 {
-printf("MSG %d\n", sizeof(msg_t));
+printf("MSG %ld\n", sizeof(msg_t));
 
   uv_loop_t *loop = uv_default_loop();
 

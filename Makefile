@@ -27,8 +27,9 @@ CFLAGS    += -pipe -fPIC -D_LARGEFILE_SOURCE -D_FILE_OFFSET_BITS=64
 LDFLAGS   += 
 
 INCS      := -I$(LUA_DIR)/src -I$(UV_DIR)/include -I$(HTTP_DIR)
+LIBS      := $(LUA_DIR)/src/libluajit.a $(UV_DIR)/uv.a $(HTTP_DIR)/http_parser.o
 
-all: deps foo.so #luv.luvit
+all: deps luv.so luv
 
 DEPS  := \
   bin/luajit \
@@ -49,7 +50,7 @@ bin/luajit: $(LUA_DIR)/src/luajit
 	strip -s $@
 
 $(LUA_DIR)/src/luajit: $(LUA_DIR)
-	$(MAKE) -j 8 -C $^
+	$(MAKE) CFLAGS='$(CFLAGS)' -j 8 -C $^
 
 $(LUA_DIR):
 	mkdir -p build
@@ -63,7 +64,7 @@ $(LUA_DIR):
 #####################
 
 $(UV_DIR)/uv.a: $(UV_DIR)
-	$(MAKE) -j 8 -C $^ uv.a
+	$(MAKE) CFLAGS='$(CFLAGS)' -j 8 -C $^ uv.a
 
 $(UV_DIR):
 	mkdir -p build
@@ -77,31 +78,24 @@ $(UV_DIR):
 #####################
 
 $(HTTP_DIR)/http_parser.o: $(HTTP_DIR)
-	$(MAKE) -j 8 -C $^ http_parser.o
+	$(MAKE) CFLAGS='$(CFLAGS)' -j 8 -C $^ http_parser.o
 
 $(HTTP_DIR):
 	mkdir -p build
 	$(GET) https://github.com/joyent/http-parser/tarball/master | tar -xzpf - -C build
 	mv build/joyent-http-parser* $@
 
-foo.so: src/foo.c $(UV_DIR)/uv.a $(HTTP_DIR)/http_parser.o
+luv.so: src/luv.c src/uhttp.c $(LIBS)
 	$(CC) $(CFLAGS) $(INCS) -shared -o $@ $^ -lpthread -lm -lrt
-
-luv.luvit: src/luv.c src/uhttp.c $(UV_DIR)/uv.a $(HTTP_DIR)/http_parser.o
-	$(CC) $(CFLAGS) $(INCS) -shared -o $@ $^ -lpthread -lm -lrt
-	cp $@ luv.so
-
-ifeq ($(FALSE),TRUE)
-luv.so: src/luv.c src/uhttp.c
-	$(CC) $(CFLAGS) -shared -o $@ $^
-	# $(UVDIR)/uv.a $(HTTPDIR)/http_parser.o
+	#cp $@ luv.luvit
 
 luv: src/test.c src/uhttp.c $(LIBS)
-	$(CC) $(CFLAGS) -o $@ $^ $(LDFLAGS) -lpthread -lm -lrt
+	$(CC) $(CFLAGS) $(INCS) -o $@ $^ $(LDFLAGS) -lpthread -lm -lrt
 	#nemiver ./luv
 	#valgrind --leak-check=full --show-reachable=yes -v ./luv
 	#chpst -o 2048 ./luv
 
+ifeq ($(FALSE),TRUE)
 fs: src/fs.c $(LIBS)
 	$(CC) $(CFLAGS) -o $@ $^ $(LDFLAGS) -lpthread -lm -lrt
 	#nemiver ./fs

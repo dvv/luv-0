@@ -27,15 +27,17 @@ LUV.make_server(8080, '0.0.0.0', 128, function (msg, ev, int, void)
   elseif ev == LUV.END then
     --debug('METH', m)
     --delay(0, function ()
-    --m:send(200, RESPONSE_BODY, {
-    --[[LUV.write_head(msg, 200, {
-      --['Content-Length'] = #RESPONSE_BODY
-    })
-    LUV.write(msg, RESPONSE_BODY)
-    LUV.finish(msg)]]--
-    LUV.send(msg, RESPONSE_BODY, 200, {
-      --['Content-Length'] = #RESPONSE_BODY
-    })
+    if false then
+      print(LUV.write_head(msg, 200, {
+        ['Content-Length'] = #RESPONSE_BODY
+      }))
+      print(LUV.write(msg, RESPONSE_BODY))
+      LUV.finish(msg)
+    else
+      LUV.send(msg, RESPONSE_BODY, 200, {
+        --['Content-Length'] = #RESPONSE_BODY
+      })
+    end
     --end)
   elseif ev == LUV.ERROR then
     LUV.finish(msg, true)

@@ -516,15 +516,15 @@ int response_write(msg_t *self, const char *data, size_t len, callback_t cb)
 {
   assert(self);
   uv_buf_t buf = { base: (char *)data, len: len };
-printf("WRITE %*s\n", len, data);
+//printf("WRITE %*s\n", len, data);
   return client_write(self->client, &buf, 1, cb);
 }
 
 int response_writev(msg_t *self, uv_buf_t *bufs, size_t nbufs, callback_t cb)
 {
   assert(self);
-printf("WRITEV %d\n", nbufs);
-  return client_write(self->client, buf, nbufs, cb);
+printf("WRITEV %ld\n", nbufs);
+  return client_write(self->client, bufs, nbufs, cb);
 }
 
 // finalize the response
