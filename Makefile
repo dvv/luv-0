@@ -23,14 +23,10 @@ HAPROXY_DIR := build/haproxy
 
 ####
 
-CFLAGS    += -pipe -fPIC -D_LARGEFILE_SOURCE -D_FILE_OFFSET_BITS=64 \
-  -I$(LUA_DIR)/src \
-  -I$(UV_DIR)/include \
-  -I$(HTTP_DIR)
-
-#CFLAGS    += -O2
-
+CFLAGS    += -pipe -fPIC -D_LARGEFILE_SOURCE -D_FILE_OFFSET_BITS=64
 LDFLAGS   += 
+
+INCS      := -I$(LUA_DIR)/src -I$(UV_DIR)/include -I$(HTTP_DIR)
 
 all: deps luv.luvit
 
@@ -89,7 +85,7 @@ $(HTTP_DIR):
 	mv build/joyent-http-parser* $@
 
 luv.luvit: src/luv.c src/uhttp.c $(UV_DIR)/uv.a $(HTTP_DIR)/http_parser.o
-	$(CC) $(CFLAGS) -shared -o $@ $^ -lpthread -lm -lrt
+	$(CC) $(CFLAGS) $(INCS) -shared -o $@ $^ -lpthread -lm -lrt
 	cp $@ luv.so
 
 ifeq ($(FALSE),TRUE)
