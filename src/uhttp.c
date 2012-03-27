@@ -407,7 +407,11 @@ static void client_on_read(uv_stream_t *handle, ssize_t nread, uv_buf_t buf)
         // reset parser
         http_parser_execute(&self->parser, &parser_settings, NULL, 0);
         // report parse error
-        EVENT(self, msg, EVT_ERROR, UV_UNKNOWN, "parse error");
+        if (msg) {
+          EVENT(self, msg, EVT_ERROR, UV_UNKNOWN, NULL);
+        }
+        // just close the client
+        client_close(self);
       }
     }
   // don't route empty chunks to the parser
@@ -507,29 +511,29 @@ const char *STATUS_CODES[6][] = {
     "Bandwidth Limit Exceeded", "Not Extended" }
 };*/
 
-// write headers to the client
-int response_write_head(msg_t *self, const char *data, size_t len, callback_t cb)
-{
-  assert(!self->headers_sent);
-  uv_buf_t buf = { base: (char *)data, len: len };
-  self->headers_sent = 1;
-  return client_write(self->client, &buf, 1, cb);
-}
-
 // write data to the client
 int response_write(msg_t *self, const char *data, size_t len, callback_t cb)
 {
-  assert(self->headers_sent);
+  assert(self);
   uv_buf_t buf = { base: (char *)data, len: len };
+printf("WRITE %*s\n", len, data);
   return client_write(self->client, &buf, 1, cb);
 }
 
-// finalize the response
-void response_end(msg_t *self)
+int response_writev(msg_t *self, uv_buf_t *bufs, size_t nbufs, callback_t cb)
 {
+  assert(self);
+printf("WRITEV %d\n", nbufs);
+  return client_write(self->client, buf, nbufs, cb);
+}
+
+// finalize the response
+void response_end(msg_t *self, int close)
+{
+  assert(self);
   // client is keep-alive, set keep-alive timeout upon request completion
   assert(self->headers_sent);
-  if (self->should_keep_alive) {
+  if (self->should_keep_alive && !close) {
     client_timeout(self->client, 500);
   } else {
     client_shutdown(self->client);

@@ -1,3 +1,5 @@
+#include <assert.h>
+
 #include "uhttp.h"
 #include "http_parser.h"
 
@@ -76,44 +78,128 @@ static int l_msg(lua_State *L)
 static void on_event(client_t *self, msg_t *msg, enum event_t ev, int status, void *data)
 {
   lua_State *L = LLL;
-  lua_rawgeti(L, LUA_REGISTRYINDEX, cb_ref);
-  //lua_pushlightuserdata(L, self);
+  int argc = 2;
+  lua_rawgeti(L, LUA_REGISTRYINDEX, cb_ref); // get event handler
   lua_pushlightuserdata(L, msg);
   lua_pushinteger(L, ev);
-  lua_pushinteger(L, status);
-  lua_pushlightuserdata(L, data);
-  lua_call(L, 4, 0);
-
-  /*luaL_getmetatable(L, "luv_tcp");
-  lua_setmetatable(L, -2);*/
-
+  switch (ev) {
+    case EVT_DATA:
+      lua_pushlstring(L, data, status);
+      argc += 1;
+      break;
+    case EVT_ERROR:
+      lua_pushinteger(L, status);
+      argc += 1;
+  }
+  lua_call(L, argc, 0);
 }
 
+// start HTTP server
 static int l_make_server(lua_State *L)
 {
   LLL = L;
   int port = luaL_checkint(L, 1);
   const char *host = luaL_checkstring(L, 2);
   int backlog_size = luaL_checkint(L, 3);
-  cb_ref = luaL_ref(L, LUA_REGISTRYINDEX);
+  cb_ref = luaL_ref(L, LUA_REGISTRYINDEX); // store event handler
   uv_tcp_t *server = server_init(port, host, backlog_size, on_event);
   return 0;
 }
 
-static int l_mmm(lua_State *L) {
-  msg_t *self = lua_newuserdata(L, sizeof(*self));
-  self->method = "AAA";
-  luaL_getmetatable(L, "uhttp.msg");
-  lua_setmetatable(L, -2);
-  return 1;
-}
-
+// start the response
 static int l_send(lua_State *L)
 {
+  size_t len;
+  const char *data;
+  //self, body, code, headers, do-not-end
   msg_t *self = lua_touserdata(L, 1);
+self->chunked = 1;
+  int code = luaL_optint(L, 3, 0);
+  // empty output buffer
+  luaL_Buffer b;
+  luaL_buffinit(L, &b);
+  // send code and headers unless already sent
+  if (!self->headers_sent && (code || lua_istable(L, 4))) {
+    if (code) {
+      self->headers_sent = 1;
+      // start response
+      luaL_addstring(&b, "HTTP/1.1 ");
+      // append code
+      lua_pushvalue(L, 3);
+      luaL_addvalue(&b);
+      luaL_addchar(&b, ' ');
+      // append status message
+      luaL_addstring(&b, STATUS_CODES[code]);
+      luaL_addstring(&b, "\r\n");
+    }
+    // append headers
+    if (lua_istable(L, 4)) {
+      self->headers_sent = 1;
+      lua_pushnil(L);
+      while (lua_next(L, 4) != 0) {
+        lua_pushvalue(L, -2);
+        luaL_addvalue(&b);
+        luaL_addstring(&b, ": ");
+        luaL_addvalue(&b);
+        luaL_addstring(&b, "\r\n");
+      }
+      if (self->chunked) {
+        luaL_addstring(&b, "Transfer-Encoding: chunked\r\n");
+      }
+      luaL_addstring(&b, "\r\n");
+    }
+  }
+  luaL_pushresult(&b); // headers on the stack
+  // TODO: flush headers and honor chunked encoding
+  // append body
+  luaL_buffinit(L, &b);
+  // table case
+  if (lua_istable(L, 2)) {
+    size_t i, argc = lua_objlen(L, 2);
+    for (i = 1; i <= argc; ++i) {
+      lua_rawgeti(L, 2, i);
+      luaL_addvalue(&b);
+    }
+  // string case
+  } else if (!lua_isnil(L, 2)) {
+    lua_pushvalue(L, 2);
+    luaL_addvalue(&b);
+  }
+  // concat body
+  luaL_pushresult(&b); // headers, body
+  if (self->chunked) {
+    data = luaL_checklstring(L, -1, &len);
+    luaL_buffinit(L, &b);
+    char *s = luaL_prepbuffer(&b);
+    sprintf(s, "%x\r\n", len);
+    luaL_addsize(&b, strlen(s));
+    luaL_addvalue(&b);
+    luaL_addstring(&b, "\r\n");
+  } else {
+    luaL_addvalue(&b);
+  }
+  // concat
+  luaL_pushresult(&b); // headers, body
+  data = luaL_checklstring(L, -1, &len);
+  lua_pop(L, 1);
+//printf("SEND %*s\n", len, data);
+  response_write(self, data, len, NULL);
+  // finish response
+  if (lua_toboolean(L, 5) == 0) {
+    response_end(self, 0);
+  }
+  return 0;
+}
+
+// start the response
+static int l_write_head(lua_State *L)
+{
+  //self, code, headers
+  msg_t *self = lua_touserdata(L, 1);
+self->chunked = 1;
+  assert(self->headers_sent == 0);
+  self->headers_sent = 1;
   int code = luaL_checkint(L, 2);
-  //self, code, body, headers, do-not-end
-  luaL_checktype(L, 4, LUA_TTABLE);
   // empty output buffer
   luaL_Buffer b;
   luaL_buffinit(L, &b);
@@ -127,26 +213,48 @@ static int l_send(lua_State *L)
   luaL_addstring(&b, STATUS_CODES[code]);
   luaL_addstring(&b, "\r\n");
   // append headers
-  lua_pushnil(L);
-  while (lua_next(L, 4) != 0) {
-    lua_pushvalue(L, -2);
-    luaL_addvalue(&b);
-    luaL_addstring(&b, ": ");
-    luaL_addvalue(&b);
-    luaL_addstring(&b, "\r\n");
+  if (lua_istable(L, 3)) {
+    lua_pushnil(L);
+    while (lua_next(L, 3) != 0) {
+      lua_pushvalue(L, -2);
+      luaL_addvalue(&b);
+      luaL_addstring(&b, ": ");
+      luaL_addvalue(&b);
+      luaL_addstring(&b, "\r\n");
+    }
+    if (self->chunked) {
+      luaL_addstring(&b, "Transfer-Encoding: chunked\r\n");
+    }
   }
   luaL_addstring(&b, "\r\n");
-  // append body
+  // concat
+  luaL_pushresult(&b);
+  size_t len;
+  const char *data = luaL_checklstring(L, -1, &len);
+  lua_pop(L, 1);
+  response_write(self, data, len, NULL);
+  return 0;
+}
+
+// write to response
+static int l_write(lua_State *L)
+{
+  //self, body
+  msg_t *self = lua_touserdata(L, 1);
+  assert(self->headers_sent != 0);
+  // empty output buffer
+  luaL_Buffer b;
+  luaL_buffinit(L, &b);
   // table case
-  if (lua_istable(L, 3)) {
-    size_t i, argc = lua_objlen(L, 3);
+  if (lua_istable(L, 2)) {
+    size_t i, argc = lua_objlen(L, 2);
     for (i = 1; i <= argc; ++i) {
-      lua_rawgeti(L, 3, i);
+      lua_rawgeti(L, 2, i);
       luaL_addvalue(&b);
     }
   // string case
-  } else {
-    lua_pushvalue(L, 3);
+  } else if (!lua_isnil(L, 2)) {
+    lua_pushvalue(L, 2);
     luaL_addvalue(&b);
   }
   // concat
@@ -154,18 +262,25 @@ static int l_send(lua_State *L)
   size_t len;
   const char *data = luaL_checklstring(L, -1, &len);
   lua_pop(L, 1);
-//printf("SEND %*s\n", len, data);
-  response_write_head(self, data, len, NULL);
-  // finish response
-  if (lua_toboolean(L, 5) == 0) {
-    response_end(self);
+  if (self->chunked) {
+    char s[128];
+    sprintf(s, "%x\r\n", len);
+    response_write(self, s, strlen(s), NULL);
+  }
+  response_write(self, data, len, NULL);
+  if (self->chunked) {
+    response_write(self, "\r\n", 2, NULL);
   }
   return 0;
 }
 
+// finalize the response
 static int l_end(lua_State *L) {
   msg_t *self = lua_touserdata(L, 1);
-  response_end(self);
+  if (self->chunked) {
+    response_write(self, "0\r\n\r\n", 5, NULL);
+  }
+  response_end(self, lua_toboolean(L, 2));
   return 0;
 }
 
@@ -173,12 +288,20 @@ static int l_end(lua_State *L) {
 /* module
 /******************************************************************************/
 
+// for standart Lua interpreters, call to start event loop
+static int l_run(lua_State *L) {
+  uv_run(uv_default_loop());
+  return 0;
+}
+
 static const luaL_Reg exports[] = {
   { "make_server", l_make_server },
-  { "send", l_send },
+  { "write_head", l_write_head },
+  { "write", l_write },
   { "finish", l_end },
+  { "send", l_send },
   { "msg", l_msg },
-  { "mmm", l_mmm },
+  { "run", l_run },
   { NULL, NULL }
 };
 
@@ -236,14 +359,6 @@ LUALIB_API int luaopen_luv(lua_State *L) {
   STATUS_CODES[507] = "Insufficient Storage";       // RFC 4918
   STATUS_CODES[509] = "Bandwidth Limit Exceeded";
   STATUS_CODES[510] = "Not Extended";               // RFC 2774
-
-  luaL_newmetatable(L, "uhttp.msg");
-  lua_pushstring(L, "__index");
-  lua_pushvalue(L, -2);
-  lua_settable(L, -3);
-  lua_pushcfunction(L, l_send);
-  lua_setfield(L, -2, "send");
-  lua_pop(L, 1);
 
   /* module table */
   lua_newtable(L);

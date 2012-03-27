@@ -53,6 +53,7 @@ struct msg_s {
   int should_keep_alive : 1;
   int should_pipeline : 1;
   int headers_sent : 1;
+  int chunked : 1;
   size_t heap_len;
   // TODO: reconsider
   char heap[4096 + HTTP_MAX_HEADER_SIZE]; // collect url and headers
@@ -83,8 +84,7 @@ uv_tcp_t *server_init(
     event_cb on_event
   );
 
-int response_write_head(msg_t *self, const char *data, size_t len, callback_t cb);
 int response_write(msg_t *self, const char *data, size_t len, callback_t cb);
-void response_end(msg_t *self);
+void response_end(msg_t *self, int close);
 
 #endif

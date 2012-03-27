@@ -1,10 +1,11 @@
-#!/usr/bin/env luvit
+#!/usr/bin/env luajit
 
 local setmetatable = setmetatable
 local Table = require('table')
 --local delay = require('timer').setTimeout
-local LUV = require('./luv')
-p('LUV', LUV)
+--local LUV = require('./luv')
+local LUV = require('luv')
+print('LUV', LUV)
 
 local RESPONSE_TABLE = {'H','e','llo','\n'}
 local RESPONSE_BODY = ('Hello\n'):rep(1)
@@ -18,17 +19,27 @@ local function Message(handle)
   return self
 end
 
-LUV.make_server(8080, '0.0.0.0', 128, function (msg, ev, ...)
-  --debug('EVENT', msg, ev, ...)
+LUV.make_server(8080, '0.0.0.0', 128, function (msg, ev, int, void)
+  --print('EVENT', msg, ev, int, void)
   --local m = Message(msg)
-  if ev == LUV.END then
+  if ev == LUV.DATA then
+    print('DATA', int, void)
+  elseif ev == LUV.END then
     --debug('METH', m)
-    delay(0, function ()
+    --delay(0, function ()
     --m:send(200, RESPONSE_BODY, {
-    LUV.send(msg, 200, RESPONSE_BODY, {
-      ['Content-Length'] = #RESPONSE_BODY
+    --[[LUV.write_head(msg, 200, {
+      --['Content-Length'] = #RESPONSE_BODY
     })
-    end)
+    LUV.write(msg, RESPONSE_BODY)
+    LUV.finish(msg)]]--
+    LUV.send(msg, RESPONSE_BODY, 200, {
+      --['Content-Length'] = #RESPONSE_BODY
+    })
+    --end)
+  elseif ev == LUV.ERROR then
+    LUV.finish(msg, true)
   end
 end)
 print('Server listening to http://*:8080. CTRL+C to exit.')
+LUV.run()

@@ -41,8 +41,6 @@ DEPS  := \
 
 deps: $(DEPS)
 
-UVO := $(addprefix build/libuv/,src/unix/core.o src/unix/dl.o src/unix/fs.o src/unix/cares.o src/unix/udp.o src/unix/error.o src/unix/thread.o src/unix/process.o src/unix/tcp.o src/unix/pipe.o src/unix/tty.o src/unix/stream.o src/unix/linux/core.o src/unix/linux/inotify.o src/uv-common.o src/unix/uv-eio.o src/unix/ev/ev.o src/unix/eio/eio.o  src/ares/ares__close_sockets.o src/ares/ares__get_hostent.o src/ares/ares__read_line.o src/ares/ares__timeval.o src/ares/ares_cancel.o src/ares/ares_data.o src/ares/ares_destroy.o src/ares/ares_expand_name.o src/ares/ares_expand_string.o src/ares/ares_fds.o src/ares/ares_free_hostent.o src/ares/ares_free_string.o src/ares/ares_gethostbyaddr.o src/ares/ares_gethostbyname.o src/ares/ares_getnameinfo.o src/ares/ares_getopt.o src/ares/ares_getsock.o src/ares/ares_init.o src/ares/ares_library_init.o src/ares/ares_llist.o src/ares/ares_mkquery.o src/ares/ares_nowarn.o src/ares/ares_options.o src/ares/ares_parse_a_reply.o src/ares/ares_parse_aaaa_reply.o src/ares/ares_parse_mx_reply.o src/ares/ares_parse_ns_reply.o src/ares/ares_parse_ptr_reply.o src/ares/ares_parse_srv_reply.o src/ares/ares_parse_txt_reply.o src/ares/ares_process.o src/ares/ares_query.o src/ares/ares_search.o src/ares/ares_send.o src/ares/ares_strcasecmp.o src/ares/ares_strdup.o src/ares/ares_strerror.o src/ares/ares_timeout.o src/ares/ares_version.o src/ares/ares_writev.o src/ares/bitncmp.o src/ares/inet_net_pton.o src/ares/inet_ntop.o)
-
 #####################
 #
 # Lua, LuaJIT
@@ -90,9 +88,8 @@ $(HTTP_DIR):
 	$(GET) https://github.com/joyent/http-parser/tarball/master | tar -xzpf - -C build
 	mv build/joyent-http-parser* $@
 
-luv.luvit: src/luv.c src/uhttp.c $(UVO) #$(UV_DIR)/uv.a
-	echo $(UVO)
-	$(CC) $(CFLAGS) -shared -o $@ $^
+luv.luvit: src/luv.c src/uhttp.c $(UV_DIR)/uv.a $(HTTP_DIR)/http_parser.o
+	$(CC) $(CFLAGS) -shared -o $@ $^ -lpthread -lm -lrt
 	cp $@ luv.so
 
 ifeq ($(FALSE),TRUE)
