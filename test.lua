@@ -19,28 +19,26 @@ local function Message(handle)
   return self
 end
 
+local slow = false
+
 LUV.make_server(8080, '0.0.0.0', 128, function (msg, ev, int, void)
   --print('EVENT', msg, ev, int, void)
   --local m = Message(msg)
   if ev == LUV.DATA then
     print('DATA', int, void)
   elseif ev == LUV.END then
-    --debug('METH', m)
-    --delay(0, function ()
-    if false then
-      print(LUV.write_head(msg, 200, {
-        ['Content-Length'] = #RESPONSE_BODY
-      }))
-      print(LUV.write(msg, RESPONSE_BODY))
-      LUV.finish(msg)
+    LUV.delay(10, function ()
+    if not slow then
+      LUV.send(msg, RESPONSE_BODY, 200, {})
     else
+      -- one write()
       LUV.send(msg, RESPONSE_BODY, 200, {
         --['Content-Length'] = #RESPONSE_BODY
-      })
+      }, true)
+      -- second write()
+      LUV.finish(msg)
     end
-    --end)
-  elseif ev == LUV.ERROR then
-    LUV.finish(msg, true)
+    end)
   end
 end)
 print('Server listening to http://*:8080. CTRL+C to exit.')

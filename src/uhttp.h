@@ -54,6 +54,7 @@ struct msg_s {
   int should_pipeline : 1;
   int headers_sent : 1;
   int chunked : 1;
+  int no_chunking : 1;
   int has_content_length : 1;
   int has_transfer_encoding : 1;
   size_t heap_len;

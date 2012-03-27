@@ -200,7 +200,7 @@ static int client_write(client_t *self, uv_buf_t *buf, int nbuf, callback_t cb)
   uv_write_t *rq = (uv_write_t *)req_alloc();
   rq->data = cb; // memo cb, call it in client_after_write
   // write buffers
-  return uv_write(rq, handle, buf, nbuf,client_after_write);
+  return uv_write(rq, handle, buf, nbuf, client_after_write);
 }
 
 // async: close is done
@@ -220,6 +220,10 @@ static void client_close(client_t *self)
 {
   // stop close timer
   client_timeout(self, 0);
+  // sanity check
+  if (self->handle.flags & (UV_CLOSING | UV_CLOSED)) {
+    return;
+  }
   // close the handle
   uv_close((uv_handle_t *)&self->handle, client_after_close);
 }
@@ -240,6 +244,9 @@ static void client_shutdown(client_t *self)
 {
   // stop close timer
   client_timeout(self, 0);
+  if (self->handle.flags & (UV_CLOSING | UV_CLOSED | UV_SHUTTING | UV_SHUT)) {
+    return;
+  }
   // flush write queue
   uv_shutdown_t *rq = (uv_shutdown_t *)req_alloc();
   rq->data = self;
