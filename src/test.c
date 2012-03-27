@@ -23,22 +23,17 @@
 
 static void timer_on_close(uv_handle_t *timer)
 {
-printf("TIMCLO? %p\n", timer);
   free((void *)timer);
-printf("TIMCLO! %p\n", timer);
 }
 
+#include <assert.h>
 static void timer_on_timeout(uv_timer_t *timer, int status)
 {
-printf("TIMTIM? %p\n", timer);
   msg_t *msg = timer->data;
   response_write(msg, RESPONSE_HEAD RESPONSE_BODY, 44, NULL);
   msg->headers_sent = 1;
   response_end(msg, 0);
-printf("TIMTIM: %p\n", timer);
-  //uv_close((uv_handle_t *)timer, NULL);
   uv_close((uv_handle_t *)timer, timer_on_close);
-printf("TIMTIM! %p\n", timer);
 }
 
 static void client_on_event(client_t *self, msg_t *msg, enum event_t ev, int status, void *data)

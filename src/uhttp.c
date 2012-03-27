@@ -207,6 +207,10 @@ static int client_write(client_t *self, uv_buf_t *buf, int nbuf, callback_t cb)
 static void client_after_close(uv_handle_t *handle)
 {
   client_t *self = handle->data;
+assert(self);
+assert(self->closing);
+assert(!self->closed);
+self->closed = 1;
   // fire 'close' event
   EVENT(self, self->msg, EVT_CLOSE, last_err().code, NULL);
   // dispose close timer
@@ -218,6 +222,10 @@ static void client_after_close(uv_handle_t *handle)
 // shutdown and close the client
 static void client_close(client_t *self)
 {
+assert(self);
+assert(!self->closing);
+assert(!self->closed);
+self->closing = 1;
   // stop close timer
   client_timeout(self, 0);
   // sanity check
