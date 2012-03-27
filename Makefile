@@ -28,7 +28,7 @@ LDFLAGS   +=
 
 INCS      := -I$(LUA_DIR)/src -I$(UV_DIR)/include -I$(HTTP_DIR)
 
-all: deps luv.luvit
+all: deps foo.so #luv.luvit
 
 DEPS  := \
   bin/luajit \
@@ -83,6 +83,9 @@ $(HTTP_DIR):
 	mkdir -p build
 	$(GET) https://github.com/joyent/http-parser/tarball/master | tar -xzpf - -C build
 	mv build/joyent-http-parser* $@
+
+foo.so: src/foo.c $(UV_DIR)/uv.a $(HTTP_DIR)/http_parser.o
+	$(CC) $(CFLAGS) $(INCS) -shared -o $@ $^ -lpthread -lm -lrt
 
 luv.luvit: src/luv.c src/uhttp.c $(UV_DIR)/uv.a $(HTTP_DIR)/http_parser.o
 	$(CC) $(CFLAGS) $(INCS) -shared -o $@ $^ -lpthread -lm -lrt
