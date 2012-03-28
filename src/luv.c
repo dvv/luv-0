@@ -273,7 +273,14 @@ static void delay_on_timer(uv_timer_t *timer, int status)
   lua_rawgeti(L, LUA_REGISTRYINDEX, delay->cb);
   luaL_unref(L, LUA_REGISTRYINDEX, delay->cb);
   lua_call(L, 0, 0);
-  uv_close((uv_handle_t *)&delay->timer, delay_on_close);
+#if 0
+  if (CLOSABLE(&delay->timer)) {
+    // TODO: delayed until https://github.com/joyent/libuv/issues/364 solved
+    uv_close((uv_handle_t *)&delay->timer, delay_on_close);
+  }
+#else
+  delay_on_close(timer);
+#endif
 }
 
 static int l_delay(lua_State *L)
