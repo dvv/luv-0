@@ -4,6 +4,7 @@ local setmetatable = setmetatable
 local Table = require('table')
 --local delay = require('timer').setTimeout
 --local LUV = require('./luv')
+--local JSON = require('json')
 local LUV = require('luv')
 print('LUV', LUV)
 
@@ -25,9 +26,10 @@ LUV.make_server(8080, '0.0.0.0', 128, function (msg, ev, int, void)
   --print('EVENT', msg, ev, int, void)
   --local m = Message(msg)
   if ev == LUV.DATA then
-    print('DATA', int, void)
+    --print('DATA', int, void)
   elseif ev == LUV.END then
-    LUV.delay(10, function ()
+    local m = LUV.msg(msg)
+    --LUV.delay(10, function ()
     if not slow then
       LUV.send(msg, RESPONSE_BODY, 200, {})
     else
@@ -38,7 +40,7 @@ LUV.make_server(8080, '0.0.0.0', 128, function (msg, ev, int, void)
       -- second write()
       LUV.finish(msg)
     end
-    end)
+    --end)
   end
 end)
 print('Server listening to http://*:8080. CTRL+C to exit.')

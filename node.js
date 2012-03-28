@@ -2,8 +2,10 @@
 
 var body = 'Hello\n';
 require('http').createServer(function (req, res) {
-  res.writeHead(200, {
-    'Content-Length': body.length,
+  req.on('end', function() {
+    res.writeHead(200, {
+      'Content-Length': body.length,
+    });
+    res.end(body);
   });
-  res.end(body);
 }).listen(8080);
