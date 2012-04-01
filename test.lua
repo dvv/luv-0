@@ -28,19 +28,34 @@ LUV.make_server(8080, '0.0.0.0', 128, function (msg, ev, int, void)
   if ev == LUV.DATA then
     --print('DATA', int, void)
   elseif ev == LUV.END then
-    local m = LUV.msg(msg)
     --LUV.delay(10, function ()
     if not slow then
-      LUV.send(msg, RESPONSE_BODY, 200, {})
+      --[[local m = LUV.msg(msg)
+      --print(m.should_keep_alive)
+      if m.uri.path == '/1' then
+        LUV.delay(20, function () LUV.send(msg, '111111', 200, {}) end)
+      elseif m.uri.path == '/2' then
+        LUV.delay(0, function () LUV.send(msg, '222222', 200, {}) end)
+      elseif m.uri.path == '/3' then
+        LUV.delay(30, function () LUV.send(msg, '333333', 200, {}) end)
+      elseif m.uri.path == '/4' then
+        LUV.delay(10, function () LUV.send(msg, '444444', 200, {}) end)
+      else]]--
+        LUV.send(msg, RESPONSE_BODY, 200, {})
+      --end
     else
       -- one write()
       LUV.send(msg, RESPONSE_BODY, 200, {
         --['Content-Length'] = #RESPONSE_BODY
       }, true)
       -- second write()
-      LUV.finish(msg)
+      LUV.send(msg, nil, nil, nil, true)
+      --LUV.finish(msg)
+      LUV.send(msg)
     end
     --end)
+  elseif ev == LUV.ERROR then
+    print('ERROR', int, void)
   end
 end)
 print('Server listening to http://*:8080. CTRL+C to exit.')

@@ -1,0 +1,17 @@
+#!/bin/sh
+
+send() {
+  cat << _EOF
+GET /1 HTTP/1.1
+
+GET /2 HTTP/1.1
+
+GET /3 HTTP/1.1
+
+GET /4 HTTP/1.1
+
+_EOF
+  cat
+}
+
+send | nc 127.0.0.1 8080

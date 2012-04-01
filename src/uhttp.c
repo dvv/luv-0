@@ -281,9 +281,15 @@ static int message_begin_cb(http_parser *parser)
   // allocate message
   msg_t *msg = msg_alloc();
   assert(msg);
-  client->msg = msg;
   memset(msg, 0, sizeof(*msg));
+  // set message's client
   msg->client = client;
+  // store links to previous message, if any
+  msg->prev = client->msg;
+  assert(msg != msg->prev);
+  // this message is the next one for the current message
+  if (client->msg) client->msg->next = msg;
+  client->msg = msg;
   return 0;
 }
 
@@ -463,8 +469,8 @@ static void server_on_connection(uv_stream_t *self, int status)
 
   uv_timer_init(self->loop, &client->timer_timeout);
   // TODO: de-hardcode
-  // set client initial inactivity timeout to 60 seconds
-  client_timeout(client, 60000);
+  // set client initial inactivity timeout to 10 seconds
+  client_timeout(client, 10000);
 
   // accept client
   uv_tcp_init(self->loop, &client->handle);
@@ -527,33 +533,72 @@ const char *STATUS_CODES[6][] = {
     "Bandwidth Limit Exceeded", "Not Extended" }
 };*/
 
-// write data to the client
+// write data to the message buffer
 int response_write(msg_t *self, const char *data, size_t len, callback_t cb)
 {
   assert(self);
-  uv_buf_t buf = { base: (char *)data, len: len };
+  assert(!self->finished);
 //printf("WRITE %*s\n", len, data);
-  return client_write(self->client, &buf, 1, cb);
+  if (self->should_pipeline) {
+    // TODO: overflow
+    uv_buf_t *buf = &self->bufs[self->nbufs++];
+    buf->base = (char *)data;
+    buf->len = len;
+    return 0;
+  } else {
+    uv_buf_t buf = { .base = (char *)data, .len = len };
+    return client_write(self->client, &buf, 1, cb);
+  }
 }
 
-int response_writev(msg_t *self, uv_buf_t *bufs, size_t nbufs, callback_t cb)
-{
-  assert(self);
-printf("WRITEV %ld\n", nbufs);
-  return client_write(self->client, bufs, nbufs, cb);
-}
-
-// finalize the response
+// flush message buffer to the client
+// N.B. honor order of responses
 void response_end(msg_t *self, int close)
 {
   assert(self);
-  // client is keep-alive, set keep-alive timeout upon request completion
-  assert(self->headers_sent);
-  if (self->should_keep_alive && !close) {
-    client_timeout(self->client, 500);
+  assert(!self->finished);
+  // mark this message as finished
+  self->finished = 1;
+  if (self->should_pipeline) {
+    // all of previous messages are also finished?
+    msg_t *p = self;
+    while (p->prev && p->prev->finished) {
+      p = p->prev;
+    }
+    // yes!
+    if (!p->prev) {
+      // flush the buffers of all previous messages.
+      // flush all next finished messages as well
+      msg_t *next;
+      while (p && p->finished) {
+        next = p->next;
+        p->prev = p->next = NULL;
+        // unlink the message
+        if (next) next->prev = NULL;
+        // write message buffers
+        client_write(p->client, p->bufs, p->nbufs, NULL);
+        // client is keep-alive, set keep-alive timeout upon request completion
+        assert(p->headers_sent);
+        if (p->should_keep_alive && !close) {
+          client_timeout(p->client, 500);
+        } else {
+          client_shutdown(p->client);
+        }
+        // cleanup message
+        msg_free(p);
+        // try to flush next message
+        p = next;
+      }
+    }
   } else {
-    client_shutdown(self->client);
+    // client is keep-alive, set keep-alive timeout upon request completion
+    assert(self->headers_sent);
+    if (self->should_keep_alive && !close) {
+      client_timeout(self->client, 500);
+    } else {
+      client_shutdown(self->client);
+    }
+    // cleanup message
+    msg_free(self);
   }
-  // cleanup
-  msg_free(self);
 }

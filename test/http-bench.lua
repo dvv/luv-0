@@ -7,8 +7,8 @@ local HOST = "127.0.0.1"
 local CONCURRENT = 100
 local BYTES = 44 -- the number of bytes in the expected response
 
---local request = "GET / HTTP/1.1\r\n\r\n"
-local request = "POST / HTTP/1.1\r\nContent-Length: 4096\r\n\r\n" .. ('x'):rep(4096)
+local request = "GET / HTTP/1.1\r\n\r\n"
+--local request = "POST / HTTP/1.1\r\nContent-Length: 4096\r\n\r\n" .. ('x'):rep(4096)
 
 -- TODO: do an initial call using http-parser to validate output and count bytes
 
@@ -24,7 +24,7 @@ local function chain()
 		client:on("data", function (chunk) 
 			size = size + #chunk
 			--p(size)
-			if size == 44 or size == 68 then
+			if size == 44 or size == 63 or size == 68 then
 				num = num + 1
 				makeRequest()
 			end

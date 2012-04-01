@@ -115,17 +115,16 @@ static int l_end(lua_State *L) {
   return 0;
 }
 
-// start the response
+// write the response
 static int l_send(lua_State *L)
 {
   size_t len;
   const char *s;
-  uv_buf_t bufs;
   luaL_Buffer b;
 
   //self, body, code, headers, do-not-end
   msg_t *self = lua_touserdata(L, 1);
-  int code = luaL_checkint(L, 3);
+  int code = lua_tointeger(L, 3);
   int finish = lua_toboolean(L, 5) == 0;
 
   // collect body
@@ -139,10 +138,10 @@ static int l_send(lua_State *L)
       luaL_addvalue(&b);
     }
     luaL_pushresult(&b); // body
-  // string case?
-  } else if (!lua_isnil(L, 2)) {
+  // something else case?
+  } else if (!lua_isnoneornil(L, 2)) {
     lua_pushvalue(L, 2); // body
-  // nil
+  // none or nil
   } else {
     lua_pushliteral(L, ""); // body
   }
@@ -153,6 +152,7 @@ static int l_send(lua_State *L)
     if (code) {
       self->headers_sent = 1;
       // start response
+      // TODO: real version
       luaL_addstring(&b, "HTTP/1.1 ");
       // append code
       lua_pushvalue(L, 3);
@@ -214,6 +214,8 @@ static int l_send(lua_State *L)
       luaL_addstring(&b, "\r\n");
     }
     luaL_pushresult(&b); // body, headers
+  } else {
+    lua_pushliteral(L, ""); // body, headers
   }
 
   // swap the stack
@@ -222,19 +224,19 @@ static int l_send(lua_State *L)
   // chunked encoding wraps the body
   if (self->chunked) {
     len = lua_objlen(L, -1);
+    luaL_buffinit(L, &b);
     if (len > 0) {
-      luaL_buffinit(L, &b);
       s = luaL_prepbuffer(&b);
       sprintf((char *)s, "%lx\r\n", len);
       luaL_addsize(&b, strlen(s));
       luaL_addvalue(&b);
       luaL_addstring(&b, "\r\n");
-      // finishing chunk
-      if (finish) {
-        luaL_addstring(&b, "0\r\n\r\n");
-      }
-      luaL_pushresult(&b); // headers, chunked body
     }
+    // finishing chunk
+    if (finish) {
+      luaL_addstring(&b, "0\r\n\r\n");
+    }
+    luaL_pushresult(&b); // headers, chunked body
   }
 
   // concat: headers + body
@@ -279,7 +281,7 @@ static void delay_on_timer(uv_timer_t *timer, int status)
     uv_close((uv_handle_t *)&delay->timer, delay_on_close);
   }
 #else
-  delay_on_close(timer);
+  delay_on_close((uv_handle_t *)timer);
 #endif
 }
 

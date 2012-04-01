@@ -14,6 +14,7 @@ typedef void (*event_cb)(client_t *self, msg_t *msg, enum event_t ev,
 
 struct msg_s {
   client_t *client;
+  msg_t *prev, *next;
   const char *method;
   int upgrade : 1;
   int should_keep_alive : 1;
@@ -23,9 +24,12 @@ struct msg_s {
   int no_chunking : 1;
   int has_content_length : 1;
   int has_transfer_encoding : 1;
+  int finished : 1;
   size_t heap_len;
   // TODO: reconsider
   char heap[4096 + HTTP_MAX_HEADER_SIZE]; // collect url and headers
+  size_t nbufs;
+  uv_buf_t bufs[128];
 };
 
 struct client_s {
@@ -34,6 +38,7 @@ struct client_s {
   http_parser parser;
   msg_t *msg; // current message http_parser deals with
   event_cb on_event;
+  //
   int closing : 1;
   int closed : 1;
 };
@@ -47,5 +52,7 @@ uv_tcp_t *server_init(
 
 int response_write(msg_t *self, const char *data, size_t len, callback_t cb);
 void response_end(msg_t *self, int close);
+uv_buf_t buf_alloc(uv_handle_t *handle, size_t size);
+void buf_free(uv_buf_t uv_buf_t);
 
 #endif
