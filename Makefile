@@ -112,12 +112,15 @@ fs: src/fs.c $(LIBS)
 luh: src/luh.c src/luv.c src/uhttp.c $(LIBS)
 	$(CC) $(CFLAGS) -o $@ $^ $(LDFLAGS) -lpthread -lm -lrt -ldl
 
-profile: luv
-	chpst -o 2048 valgrind --tool=callgrind --dump-instr=yes --simulate-cache=yes --collect-jumps=yes ./luv
-
 luv.h: $(HTTPDIR)/http_parser.h $(UVDIR)/include/uv.h src/luv.h
 	cat $^ | $(CC) -E $(CFLAGS) - | sed '/^#/d;/^$$/d' >$@
 endif
+
+profile: luv
+	chpst -o 2048 valgrind --tool=callgrind --dump-instr=yes --simulate-cache=yes --collect-jumps=yes ./luv
+
+profile-mem: luv
+	chpst -o 2048 valgrind --leak-check=full --show-reachable=yes -v ./luv
 
 .PHONY: all deps profile clean
 #.SILENT:

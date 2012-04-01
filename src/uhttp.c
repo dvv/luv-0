@@ -68,6 +68,8 @@ typedef struct buf_list_s {
 
 static buf_list_t *buf_freelist = NULL;
 
+static int NB = 0;
+
 uv_buf_t buf_alloc(uv_handle_t *handle, size_t size) {
   buf_list_t *buf;
 
@@ -78,6 +80,7 @@ uv_buf_t buf_alloc(uv_handle_t *handle, size_t size) {
   }
 
   buf = (buf_list_t *) malloc(size + sizeof *buf);
+  printf("BUFALLOC %d\n", ++NB);
   buf->uv_buf_t.len = (unsigned int)size;
   buf->uv_buf_t.base = ((char *) buf) + sizeof *buf;
 
@@ -255,7 +258,7 @@ static void client_after_shutdown(uv_shutdown_t *rq, int status)
 static void client_shutdown(client_t *self)
 {
   // sanity check
-  if (!uv_is_writable(&self->handle)) return;
+  if (!uv_is_writable((uv_stream_t *)&self->handle)) return;
   // stop close timer
   client_timeout(self, 0);
   // flush write queue
@@ -540,6 +543,13 @@ int response_write(msg_t *self, const char *data, size_t len)
   return 0;
 }
 
+static void response_free(msg_t *self)
+{
+  self->client->msg = NULL;
+  // TODO: cleanup cleaner
+  msg_free(self);
+}
+
 // async: write is done
 static void response_client_after_write(uv_write_t *rq, int status)
 {
@@ -551,10 +561,8 @@ static void response_client_after_write(uv_write_t *rq, int status)
   } else {
     client_shutdown(msg->client);
   }
-  // cleanup message
-  // TODO: why here?
-  msg->client->msg = NULL;
-  msg_free(msg);
+  // free message
+  response_free(msg);
 }
 
 // flush message buffer to the client
@@ -583,7 +591,7 @@ void response_end(msg_t *self, int close)
       // write message buffers
       assert(p->headers_sent);
       uv_stream_t *handle = (uv_stream_t *)&p->client->handle;
-      // do not write to closed stream
+      // write only to writable stream
       if (uv_is_writable(handle)) {
         // stop close timer
         client_timeout(p->client, 0);
@@ -592,6 +600,9 @@ void response_end(msg_t *self, int close)
         rq->data = p;
         // write buffers
         uv_write(rq, handle, p->bufs, p->nbufs, response_client_after_write);
+      // stream is not writable? just cleanup message
+      } else {
+        response_free(p);
       }
       // try to flush next message
       p = next;
