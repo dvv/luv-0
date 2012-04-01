@@ -3,7 +3,7 @@
 
 #include <fcntl.h>
 
-#include "uv.h"
+#include "common.h"
 
 typedef void (*callback_t)(int status);
 typedef void (*callback_fs_t)(uv_fs_t *rq);
