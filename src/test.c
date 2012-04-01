@@ -1,6 +1,6 @@
 #include "uhttp.h"
 
-//#define DELAY_RESPONSE 1
+#define DELAY_RESPONSE 1
 
 #define RESPONSE_HEAD \
   "HTTP/1.1 200 OK\r\n" \
@@ -30,18 +30,18 @@ static void timer_on_close(uv_handle_t *timer)
 static void timer_on_timeout(uv_timer_t *timer, int status)
 {
   msg_t *msg = timer->data;
-  response_write(msg, RESPONSE_HEAD, 38, NULL);
+  response_write(msg, RESPONSE_HEAD, 38);
   msg->headers_sent = 1;
   if (strcmp(msg->heap, "/1") == 0) {
-    response_write(msg, "[1111]", 6, NULL);
+    response_write(msg, "[111]\n", 6);
   } else if (strcmp(msg->heap, "/2") == 0) {
-    response_write(msg, "[2222]", 6, NULL);
+    response_write(msg, "[222]\n", 6);
   } else if (strcmp(msg->heap, "/3") == 0) {
-    response_write(msg, "[3333]", 6, NULL);
+    response_write(msg, "[333]\n", 6);
   } else if (strcmp(msg->heap, "/4") == 0) {
-    response_write(msg, "[4444]", 6, NULL);
+    response_write(msg, "[444]\n", 6);
   } else {
-    response_write(msg, RESPONSE_BODY, 6, NULL);
+    response_write(msg, RESPONSE_BODY, 6);
   }
   response_end(msg, 0);
   uv_close((uv_handle_t *)timer, timer_on_close);
@@ -86,8 +86,7 @@ static void client_on_event(client_t *self, msg_t *msg, enum event_t ev, int sta
       uv_timer_start(timer, timer_on_timeout, DELAY_RESPONSE, 0);
     }
 #else
-    //msg->should_pipeline = 0;
-    response_write(msg, RESPONSE_HEAD RESPONSE_BODY, 44, NULL);
+    response_write(msg, RESPONSE_HEAD RESPONSE_BODY, 44);
     msg->headers_sent = 1;
     response_end(msg, 0);
 #endif

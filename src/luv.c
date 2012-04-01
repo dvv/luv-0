@@ -36,10 +36,6 @@ static int l_msg(lua_State *L)
       lua_pushboolean(L, 1);
       lua_setfield(L, -2, "upgrade");
     }
-    if (msg->should_pipeline) {
-      lua_pushboolean(L, 1);
-      lua_setfield(L, -2, "should_pipeline");
-    }
     // url
     const char *p = msg->heap;
     lua_pushstring(L, p);
@@ -109,7 +105,7 @@ static int l_make_server(lua_State *L)
 static int l_end(lua_State *L) {
   msg_t *self = lua_touserdata(L, 1);
   if (self->chunked) {
-    response_write(self, "0\r\n\r\n", 5, NULL);
+    response_write(self, "0\r\n\r\n", 5);
   }
   response_end(self, lua_toboolean(L, 2));
   return 0;
@@ -243,7 +239,7 @@ static int l_send(lua_State *L)
   lua_concat(L, 2);
   s = luaL_checklstring(L, -1, &len);
 //printf("SEND %*s\n", len, s);
-  response_write(self, s, len, NULL);
+  response_write(self, s, len);
   // finish response
   if (finish) {
     response_end(self, 0);

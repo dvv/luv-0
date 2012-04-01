@@ -174,6 +174,7 @@ static void client_timeout(client_t *self, uint64_t timeout)
   }
 }
 
+/***
 // async: write is done
 static void client_after_write(uv_write_t *rq, int status)
 {
@@ -202,6 +203,7 @@ static int client_write(client_t *self, uv_buf_t *buf, int nbuf, callback_t cb)
   // write buffers
   return uv_write(rq, handle, buf, nbuf, client_after_write);
 }
+***/
 
 // async: close is done
 static void client_after_close(uv_handle_t *handle)
@@ -253,7 +255,7 @@ static void client_after_shutdown(uv_shutdown_t *rq, int status)
 static void client_shutdown(client_t *self)
 {
   // sanity check
-  if (!WRITABLE(&self->handle)) return;
+  if (!uv_is_writable(&self->handle)) return;
   // stop close timer
   client_timeout(self, 0);
   // flush write queue
@@ -287,8 +289,10 @@ static int message_begin_cb(http_parser *parser)
   // store links to previous message, if any
   msg->prev = client->msg;
   assert(msg != msg->prev);
-  // this message is the next one for the current message
-  if (client->msg) client->msg->next = msg;
+  if (msg != msg->prev) {
+    // this message is the next one for the current message
+    if (msg->prev) msg->prev->next = msg;
+  }
   client->msg = msg;
   return 0;
 }
@@ -354,15 +358,6 @@ static int headers_complete_cb(http_parser *parser)
   if (msg->should_keep_alive) {
     client_timeout(msg->client, 0);
   }
-  // activate pipeline for idempotent methods
-  switch (parser->method) {
-    case HTTP_GET:
-    case HTTP_HEAD:
-    case HTTP_PUT:
-    case HTTP_DELETE:
-    // TODO: you name others
-      msg->should_pipeline = 1;
-  }
   // run 'request' handler
   EVENT(client, msg, EVT_REQUEST, 0, NULL);
   return 0; // 1 to skip body!
@@ -397,11 +392,10 @@ static int message_complete_cb(http_parser *parser)
   assert(client);
   msg_t *msg = client->msg;
   assert(msg);
+  // reset parser
+  http_parser_execute(parser, &parser_settings, NULL, 0);
   // fire 'end' event
   EVENT(client, msg, EVT_END, 0, NULL);
-  // reset parser
-  client->msg = NULL;
-  http_parser_execute(parser, &parser_settings, NULL, 0);
   return 0;
 }
 
@@ -534,21 +528,33 @@ const char *STATUS_CODES[6][] = {
 };*/
 
 // write data to the message buffer
-int response_write(msg_t *self, const char *data, size_t len, callback_t cb)
+int response_write(msg_t *self, const char *data, size_t len)
 {
   assert(self);
   assert(!self->finished);
 //printf("WRITE %*s\n", len, data);
-  if (self->should_pipeline) {
-    // TODO: overflow
-    uv_buf_t *buf = &self->bufs[self->nbufs++];
-    buf->base = (char *)data;
-    buf->len = len;
-    return 0;
+  // TODO: overflow
+  uv_buf_t *buf = &self->bufs[self->nbufs++];
+  buf->base = (char *)data;
+  buf->len = len;
+  return 0;
+}
+
+// async: write is done
+static void response_client_after_write(uv_write_t *rq, int status)
+{
+  msg_t *msg = rq->data;
+  req_free((uv_req_t *)rq);
+  // client is keep-alive, set keep-alive timeout upon request completion
+  if (msg->should_keep_alive) {
+    client_timeout(msg->client, 500);
   } else {
-    uv_buf_t buf = { .base = (char *)data, .len = len };
-    return client_write(self->client, &buf, 1, cb);
+    client_shutdown(msg->client);
   }
+  // cleanup message
+  // TODO: why here?
+  msg->client->msg = NULL;
+  msg_free(msg);
 }
 
 // flush message buffer to the client
@@ -559,46 +565,36 @@ void response_end(msg_t *self, int close)
   assert(!self->finished);
   // mark this message as finished
   self->finished = 1;
-  if (self->should_pipeline) {
-    // all of previous messages are also finished?
-    msg_t *p = self;
-    while (p->prev && p->prev->finished) {
-      p = p->prev;
-    }
-    // yes!
-    if (!p->prev) {
-      // flush the buffers of all previous messages.
-      // flush all next finished messages as well
-      msg_t *next;
-      while (p && p->finished) {
-        next = p->next;
-        p->prev = p->next = NULL;
-        // unlink the message
-        if (next) next->prev = NULL;
-        // write message buffers
-        client_write(p->client, p->bufs, p->nbufs, NULL);
-        // client is keep-alive, set keep-alive timeout upon request completion
-        assert(p->headers_sent);
-        if (p->should_keep_alive && !close) {
-          client_timeout(p->client, 500);
-        } else {
-          client_shutdown(p->client);
-        }
-        // cleanup message
-        msg_free(p);
-        // try to flush next message
-        p = next;
+  // all of previous messages are also finished?
+  msg_t *p = self;
+  while (p->prev && p->prev->finished) {
+    p = p->prev;
+  }
+  // yes! pipeline ok
+  if (!p->prev) {
+    // flush the buffers of all previous messages.
+    // flush all next finished messages as well
+    msg_t *next;
+    while (p && p->finished) {
+      next = p->next;
+      p->prev = p->next = NULL;
+      // unlink the message
+      if (next) next->prev = NULL;
+      // write message buffers
+      assert(p->headers_sent);
+      uv_stream_t *handle = (uv_stream_t *)&p->client->handle;
+      // do not write to closed stream
+      if (uv_is_writable(handle)) {
+        // stop close timer
+        client_timeout(p->client, 0);
+        // create write request
+        uv_write_t *rq = (uv_write_t *)req_alloc();
+        rq->data = p;
+        // write buffers
+        uv_write(rq, handle, p->bufs, p->nbufs, response_client_after_write);
       }
+      // try to flush next message
+      p = next;
     }
-  } else {
-    // client is keep-alive, set keep-alive timeout upon request completion
-    assert(self->headers_sent);
-    if (self->should_keep_alive && !close) {
-      client_timeout(self->client, 500);
-    } else {
-      client_shutdown(self->client);
-    }
-    // cleanup message
-    msg_free(self);
   }
 }

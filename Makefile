@@ -27,7 +27,8 @@ CFLAGS    += -g -pipe -fPIC -D_LARGEFILE_SOURCE -D_FILE_OFFSET_BITS=64
 LDFLAGS   += 
 
 INCS      := -I$(LUA_DIR)/src -I$(UV_DIR)/include -I$(HTTP_DIR)
-LIBS      := $(LUA_DIR)/src/libluajit.a $(UV_DIR)/uv.a $(HTTP_DIR)/http_parser.o
+#LIBS      := $(LUA_DIR)/src/libluajit.a $(UV_DIR)/uv.a $(HTTP_DIR)/http_parser.o
+LIBS      := $(UV_DIR)/uv.a $(HTTP_DIR)/http_parser.o
 
 all: deps luv.so luv
 
@@ -84,6 +85,12 @@ $(HTTP_DIR):
 	mkdir -p build
 	$(GET) https://github.com/joyent/http-parser/tarball/master | tar -xzpf - -C build
 	mv build/joyent-http-parser* $@
+
+#####################
+#
+# luv
+#
+#####################
 
 luv.so: src/luv.c src/uhttp.c $(LIBS)
 	$(CC) $(CFLAGS) $(INCS) -shared -o $@ $^ -lpthread -lm -lrt

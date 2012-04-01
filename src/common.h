@@ -37,7 +37,6 @@ enum event_t {
   EVT_MAX
 };
 
-#define WRITABLE(handle) (!((handle)->flags & (UV_CLOSING | UV_CLOSED | UV_SHUTTING | UV_SHUT)))
 #define CLOSABLE(handle) (!((handle)->flags & (UV_CLOSING | UV_CLOSED)))
 
 #define EVENT(self, params...) (self)->on_event((self), params)

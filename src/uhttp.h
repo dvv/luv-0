@@ -18,7 +18,6 @@ struct msg_s {
   const char *method;
   int upgrade : 1;
   int should_keep_alive : 1;
-  int should_pipeline : 1;
   int headers_sent : 1;
   int chunked : 1;
   int no_chunking : 1;
@@ -50,9 +49,7 @@ uv_tcp_t *server_init(
     event_cb on_event
   );
 
-int response_write(msg_t *self, const char *data, size_t len, callback_t cb);
+int response_write(msg_t *self, const char *data, size_t len);
 void response_end(msg_t *self, int close);
-uv_buf_t buf_alloc(uv_handle_t *handle, size_t size);
-void buf_free(uv_buf_t uv_buf_t);
 
 #endif

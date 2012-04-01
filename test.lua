@@ -30,19 +30,19 @@ LUV.make_server(8080, '0.0.0.0', 128, function (msg, ev, int, void)
   elseif ev == LUV.END then
     --LUV.delay(10, function ()
     if not slow then
-      --[[local m = LUV.msg(msg)
-      --print(m.should_keep_alive)
+      local m = LUV.msg(msg)
       if m.uri.path == '/1' then
-        LUV.delay(20, function () LUV.send(msg, '111111', 200, {}) end)
+        LUV.delay(20, function () LUV.send(msg, '[111]\n', 200, {}) end)
       elseif m.uri.path == '/2' then
-        LUV.delay(0, function () LUV.send(msg, '222222', 200, {}) end)
+        LUV.delay(0, function () LUV.send(msg, '[222]\n', 200, {}) end)
       elseif m.uri.path == '/3' then
-        LUV.delay(30, function () LUV.send(msg, '333333', 200, {}) end)
+        LUV.delay(30, function () LUV.send(msg, '[333]\n', 200, {}) end)
       elseif m.uri.path == '/4' then
-        LUV.delay(10, function () LUV.send(msg, '444444', 200, {}) end)
-      else]]--
-        LUV.send(msg, RESPONSE_BODY, 200, {})
-      --end
+        LUV.delay(10, function () LUV.send(msg, '[444]\n', 200, {}) end)
+      else
+        LUV.delay(1, function () LUV.send(msg, RESPONSE_BODY, 200, {}) end)
+        --LUV.send(msg, RESPONSE_BODY, 200, {})
+      end
     else
       -- one write()
       LUV.send(msg, RESPONSE_BODY, 200, {
