@@ -222,15 +222,11 @@ static int client_write(client_t *self, uv_buf_t *buf, int nbuf, callback_t cb)
 static void client_after_close(uv_handle_t *handle)
 {
   client_t *self = handle->data;
-assert(self);
-if (!self->closing) {printf("AFTERCLOSEWITHOUTCLOSING %p\n", self);}
-if (self->closed) {printf("DOUBLEAFTERCLOSE %p\n", self);}
-self->closed = 1;
+  assert(self);
   // dispose close timer
-  if (CLOSABLE(&self->timer_timeout)) {
+  if (!uv_is_closing((uv_handle_t *)&self->timer_timeout)) {
     uv_close((uv_handle_t *)&self->timer_timeout, NULL);
   }
-if (!self->closing) {printf("AFTERCLOSEBROKEN %p\n", self);}
   // fire 'close' event
   EVENT(self, self->msg, EVT_CLOSE, last_err().code, NULL);
   // free self
@@ -240,13 +236,9 @@ if (!self->closing) {printf("AFTERCLOSEBROKEN %p\n", self);}
 // shutdown and close the client
 static void client_close(client_t *self)
 {
-assert(self);
-if (self->closing) {printf("DOUBLECLOSING %p\n", self);}
-if (self->closed) {printf("DOUBLECLOSE %p\n", self);}
-self->closing = 1;
+  assert(self);
   // sanity check
-  if (!CLOSABLE(&self->handle)) return;
-if (self->closed) {printf("CLOSEBROKEN %p\n", self);}
+  if (uv_is_closing((uv_handle_t *)&self->handle)) return;
   // stop close timer
   client_timeout(self, 0);
   // close the handle

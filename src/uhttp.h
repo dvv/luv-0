@@ -37,9 +37,6 @@ struct client_s {
   http_parser parser;
   msg_t *msg; // current message http_parser deals with
   event_cb on_event;
-  //
-  int closing : 1;
-  int closed : 1;
 };
 
 uv_tcp_t *server_init(
