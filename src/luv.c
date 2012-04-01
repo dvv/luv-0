@@ -107,7 +107,7 @@ static int l_end(lua_State *L) {
   if (self->chunked) {
     response_write(self, "0\r\n\r\n", 5);
   }
-  response_end(self, lua_toboolean(L, 2));
+  response_end(self);
   return 0;
 }
 
@@ -124,6 +124,7 @@ static int l_send(lua_State *L)
   int finish = lua_toboolean(L, 5) == 0;
 
   // collect body
+  // TODO: if method is HEAD, body is ""
   // table case?
   if (lua_istable(L, 2)) {
     size_t i;
@@ -242,7 +243,7 @@ static int l_send(lua_State *L)
   response_write(self, s, len);
   // finish response
   if (finish) {
-    response_end(self, 0);
+    response_end(self);
   }
 
   return 1;
@@ -272,7 +273,7 @@ static void delay_on_timer(uv_timer_t *timer, int status)
   luaL_unref(L, LUA_REGISTRYINDEX, delay->cb);
   lua_call(L, 0, 0);
 #if 0
-  if (CLOSABLE(&delay->timer)) {
+  if (!uv_is_closing((uv_handle_t *)&delay->timer)) {
     // TODO: delayed until https://github.com/joyent/libuv/issues/364 solved
     uv_close((uv_handle_t *)&delay->timer, delay_on_close);
   }

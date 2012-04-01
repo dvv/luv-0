@@ -171,6 +171,7 @@ static void client_free(client_t *client) {
   l->next = client_freelist;
   client_freelist = l;
 }
+
 /******************************************************************************/
 /* TCP client methods
 /******************************************************************************/
@@ -186,37 +187,6 @@ static void client_timeout(client_t *self, uint64_t timeout)
     uv_timer_start(&self->timer_timeout, client_on_timeout, timeout, 0);
   }
 }
-
-/***
-// async: write is done
-static void client_after_write(uv_write_t *rq, int status)
-{
-  callback_t cb = rq->data;
-  if (cb) {
-    cb(status ? last_err().code : 0);
-  }
-  req_free((uv_req_t *)rq);
-}
-
-// write some buffers to the client
-static int client_write(client_t *self, uv_buf_t *buf, int nbuf, callback_t cb)
-{
-  assert(self);
-  uv_stream_t *handle = (uv_stream_t *)&self->handle;
-  // do not write to closed stream
-  if (!WRITABLE(handle)) {
-    if (cb) cb(UV_EPIPE);
-    return;
-  }
-  // stop close timer
-  client_timeout(self, 0);
-  // create write request
-  uv_write_t *rq = (uv_write_t *)req_alloc();
-  rq->data = cb; // memo cb, call it in client_after_write
-  // write buffers
-  return uv_write(rq, handle, buf, nbuf, client_after_write);
-}
-***/
 
 // async: close is done
 static void client_after_close(uv_handle_t *handle)
@@ -249,11 +219,11 @@ static void client_close(client_t *self)
 static void client_after_shutdown(uv_shutdown_t *rq, int status)
 {
   client_t *self = rq->data;
+  req_free((uv_req_t *)rq);
   // fire 'shut' event
   EVENT(self, self->msg, EVT_SHUT, last_err().code, NULL);
   // close the handle
   client_close(self);
-  req_free((uv_req_t *)rq);
 }
 
 // shutdown and close the client
@@ -511,33 +481,12 @@ uv_tcp_t *server_init(
 /* HTTP response methods
 /******************************************************************************/
 
-/*
-const char *STATUS_CODES[6][] = {
-  {},
-  { "Continue", "Switching Protocols", "Processing" },
-  { "OK", "Created", "Accepted", "Non-Authoritative Information", "No Content",
-    "Reset Content", "Partial Content", "Multi-Status" },
-  { "Multiple Choices", "Moved Permanently", "Moved Temporarily", "See Other",
-    "Not Modified", "Use Proxy", "306", "Temporary Redirect" },
-  { "Bad Request", "Unauthorized", "Payment Required", "Forbidden", "Not Found",
-    "Method Not Allowed", "Not Acceptable", "Proxy Authentication Required",
-    "Request Time-out", "Conflict", "Gone", "Length Required",
-    "Precondition Failed", "Request Entity Too Large", "Request-URI Too Large",
-    "Unsupported Media Type", "Requested Range Not Satisfiable",
-    "Expectation Failed", "I'm a teapot", "419", "420", "421",
-    "Unprocessable Entity", "Locked", "Failed Dependency",
-    "Unordered Collection", "Upgrade Required" },
-  { "Internal Server Error", "Not Implemented", "Bad Gateway",
-    "Service Unavailable", "Gateway Time-out", "HTTP Version not supported",
-    "Variant Also Negotiates", "Insufficient Storage", "508",
-    "Bandwidth Limit Exceeded", "Not Extended" }
-};*/
-
 // write data to the message buffer
 int response_write(msg_t *self, const char *data, size_t len)
 {
   assert(self);
   assert(!self->finished);
+  // TODO: HEAD should void body
 //printf("WRITE %*s\n", len, data);
   // TODO: overflow
   uv_buf_t *buf = &self->bufs[self->nbufs++];
@@ -548,6 +497,7 @@ int response_write(msg_t *self, const char *data, size_t len)
 
 static void response_free(msg_t *self)
 {
+  DEBUGF("RFREE %p\n", self);
   self->client->msg = NULL;
   // TODO: cleanup cleaner
   msg_free(self);
@@ -570,7 +520,7 @@ static void response_client_after_write(uv_write_t *rq, int status)
 
 // flush message buffer to the client
 // N.B. honor order of responses
-void response_end(msg_t *self, int close)
+void response_end(msg_t *self)
 {
   assert(self);
   assert(!self->finished);

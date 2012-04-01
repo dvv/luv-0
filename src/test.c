@@ -1,6 +1,6 @@
 #include "uhttp.h"
 
-#define DELAY_RESPONSE 1
+#define DELAY_RESPONSE 100
 
 #define RESPONSE_HEAD \
   "HTTP/1.1 200 OK\r\n" \
@@ -43,7 +43,7 @@ static void timer_on_timeout(uv_timer_t *timer, int status)
   } else {
     response_write(msg, RESPONSE_BODY, 6);
   }
-  response_end(msg, 0);
+  response_end(msg);
   uv_close((uv_handle_t *)timer, timer_on_close);
 }
 
@@ -88,7 +88,7 @@ static void client_on_event(client_t *self, msg_t *msg, enum event_t ev, int sta
 #else
     response_write(msg, RESPONSE_HEAD RESPONSE_BODY, 44);
     msg->headers_sent = 1;
-    response_end(msg, 0);
+    response_end(msg);
 #endif
   } else if (ev == EVT_ERROR) {
     DEBUGF("RERROR %p %d %s", msg, status, (char *)data);

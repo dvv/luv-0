@@ -7,7 +7,6 @@
 typedef struct client_s client_t;
 typedef struct msg_s msg_t;
 
-typedef void (*callback_data_t)(const char *data);
 typedef void (*callback_t)(int status);
 typedef void (*event_cb)(client_t *self, msg_t *msg, enum event_t ev,
     int status, void *data);
@@ -47,6 +46,6 @@ uv_tcp_t *server_init(
   );
 
 int response_write(msg_t *self, const char *data, size_t len);
-void response_end(msg_t *self, int close);
+void response_end(msg_t *self);
 
 #endif

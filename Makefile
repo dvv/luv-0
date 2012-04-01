@@ -23,7 +23,7 @@ HAPROXY_DIR := build/haproxy
 
 ####
 
-CFLAGS    += -g -pipe -fPIC -D_LARGEFILE_SOURCE -D_FILE_OFFSET_BITS=64
+CFLAGS    += -DDEBUG -g -pipe -fPIC -D_LARGEFILE_SOURCE -D_FILE_OFFSET_BITS=64
 LDFLAGS   += 
 
 INCS      := -I$(LUA_DIR)/src -I$(UV_DIR)/include -I$(HTTP_DIR)
