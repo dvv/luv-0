@@ -37,20 +37,20 @@ typedef struct req_list_s {
 
 static req_list_t *req_freelist = NULL;
 
-uv_req_t *req_alloc() {
+static uv_req_t *req_alloc() {
   req_list_t *req;
 
   req = req_freelist;
   if (req != NULL) {
     req_freelist = req->next;
-    return (uv_req_t *) req;
+    return (uv_req_t *)req;
   }
 
   req = (req_list_t *)malloc(sizeof *req);
   return (uv_req_t *)req;
 }
 
-void req_free(uv_req_t *uv_req) {
+static void req_free(uv_req_t *uv_req) {
   req_list_t *req = (req_list_t *)uv_req;
 
   req->next = req_freelist;
@@ -70,7 +70,7 @@ static buf_list_t *buf_freelist = NULL;
 
 static int NB = 0;
 
-uv_buf_t buf_alloc(uv_handle_t *handle, size_t size) {
+static uv_buf_t buf_alloc(uv_handle_t *handle, size_t size) {
   buf_list_t *buf;
 
   buf = buf_freelist;
@@ -87,7 +87,7 @@ uv_buf_t buf_alloc(uv_handle_t *handle, size_t size) {
   return buf->uv_buf_t;
 }
 
-void buf_free(uv_buf_t uv_buf_t) {
+static void buf_free(uv_buf_t uv_buf_t) {
   buf_list_t *buf = (buf_list_t *) (uv_buf_t.base - sizeof *buf);
 
   buf->next = buf_freelist;
@@ -107,7 +107,7 @@ static msg_list_t *msg_freelist = NULL;
 
 static int NM = 0;
 
-msg_t *msg_alloc() {
+static msg_t *msg_alloc() {
   msg_list_t *msg;
 
   msg = msg_freelist;
@@ -121,12 +121,22 @@ msg_t *msg_alloc() {
   return (msg_t *)msg;
 }
 
-void msg_free(msg_t *msg) {
+static void msg_free(msg_t *msg) {
   msg_list_t *m = (msg_list_t *)msg;
 
   m->next = msg_freelist;
   msg_freelist = m;
 }
+
+/***
+static void x_free(void **list)
+{
+  while (*list != NULL) {
+    x = *list;
+    *list = x->next;
+    free(x);
+  }
+}***/
 
 /*
  * HTTP client allocator
@@ -141,7 +151,7 @@ static client_list_t *client_freelist = NULL;
 
 static int NC = 0;
 
-client_t *client_alloc() {
+static client_t *client_alloc() {
   client_list_t *client;
 
   client = client_freelist;
@@ -155,7 +165,7 @@ client_t *client_alloc() {
   return (client_t *)client;
 }
 
-void client_free(client_t *client) {
+static void client_free(client_t *client) {
   client_list_t *l = (client_list_t *)client;
 
   l->next = client_freelist;
@@ -296,6 +306,7 @@ static int message_begin_cb(http_parser *parser)
     // this message is the next one for the current message
     if (msg->prev) msg->prev->next = msg;
   }
+  //
   client->msg = msg;
   return 0;
 }
