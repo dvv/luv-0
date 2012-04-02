@@ -1,6 +1,6 @@
 #include "uhttp.h"
 
-#define DELAY_RESPONSE 100
+//#define DELAY_RESPONSE 100
 
 #define RESPONSE_HEAD \
   "HTTP/1.1 200 OK\r\n" \
@@ -32,13 +32,13 @@ static void timer_on_timeout(uv_timer_t *timer, int status)
   msg_t *msg = timer->data;
   response_write(msg, RESPONSE_HEAD, 38);
   msg->headers_sent = 1;
-  if (strcmp(msg->heap, "/1") == 0) {
+  if (strcmp(msg->heap.base, "/1") == 0) {
     response_write(msg, "[111]\n", 6);
-  } else if (strcmp(msg->heap, "/2") == 0) {
+  } else if (strcmp(msg->heap.base, "/2") == 0) {
     response_write(msg, "[222]\n", 6);
-  } else if (strcmp(msg->heap, "/3") == 0) {
+  } else if (strcmp(msg->heap.base, "/3") == 0) {
     response_write(msg, "[333]\n", 6);
-  } else if (strcmp(msg->heap, "/4") == 0) {
+  } else if (strcmp(msg->heap.base, "/4") == 0) {
     response_write(msg, "[444]\n", 6);
   } else {
     response_write(msg, RESPONSE_BODY, 6);
@@ -74,13 +74,13 @@ static void client_on_event(client_t *self, msg_t *msg, enum event_t ev, int sta
     uv_timer_t *timer = malloc(sizeof(*timer));
     timer->data = msg;
     uv_timer_init(self->handle.loop, timer);
-    if (strcmp(msg->heap, "/1") == 0) {
+    if (strcmp(msg->heap.base, "/1") == 0) {
       uv_timer_start(timer, timer_on_timeout, 2 * DELAY_RESPONSE, 0);
-    } else if (strcmp(msg->heap, "/2") == 0) {
+    } else if (strcmp(msg->heap.base, "/2") == 0) {
       uv_timer_start(timer, timer_on_timeout, 0 * DELAY_RESPONSE, 0);
-    } else if (strcmp(msg->heap, "/3") == 0) {
+    } else if (strcmp(msg->heap.base, "/3") == 0) {
       uv_timer_start(timer, timer_on_timeout, 3 * DELAY_RESPONSE, 0);
-    } else if (strcmp(msg->heap, "/4") == 0) {
+    } else if (strcmp(msg->heap.base, "/4") == 0) {
       uv_timer_start(timer, timer_on_timeout, 1 * DELAY_RESPONSE, 0);
     } else {
       uv_timer_start(timer, timer_on_timeout, DELAY_RESPONSE, 0);

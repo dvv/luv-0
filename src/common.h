@@ -21,6 +21,7 @@ enum event_t {
   EVT_END,
   EVT_SHUT,
   EVT_CLOSE,
+  EVT_MESSAGE,
   EVT_MAX
 };
 

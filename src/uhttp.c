@@ -81,7 +81,7 @@ static uv_buf_t buf_alloc(uv_handle_t *handle, size_t size) {
 
   buf = (buf_list_t *) malloc(size + sizeof *buf);
   printf("BUFALLOC %d\n", ++NB);
-  buf->uv_buf_t.len = (unsigned int)size;
+  buf->uv_buf_t.len = size;
   buf->uv_buf_t.base = ((char *) buf) + sizeof *buf;
 
   return buf->uv_buf_t;
@@ -282,6 +282,11 @@ static int message_begin_cb(http_parser *parser)
     // this message is the next one for the current message
     if (msg->prev) msg->prev->next = msg;
   }
+  // allocate message heap
+  // N.B. size should equal uv's buffer size
+  msg->heap = buf_alloc(NULL, 64 * 1024);
+  memset(msg->heap.base, 0, 64 * 1024);
+  msg->heap.len = 0;
   //
   client->msg = msg;
   return 0;
@@ -295,8 +300,8 @@ static int url_cb(http_parser *parser, const char *p, size_t len)
   assert(msg);
   // memo URL
   // TODO: fix overflow!
-  strncat(msg->heap, p, len);
-  msg->heap_len += len;
+  strncat(msg->heap.base, p, len);
+  msg->heap.len += len;
   return 0;
 }
 
@@ -308,15 +313,15 @@ static int header_field_cb(http_parser *parser, const char *p, size_t len)
   assert(msg);
   // memo header name
   // TODO: fix overflow!
-  int new = (parser->state == 47 && msg->heap_len) ? 1 : 0; // s_header_field?
+  int new = (parser->state == 47 && msg->heap.len) ? 1 : 0; // s_header_field?
   {
   // lower case and append to the heap
   size_t i;
-  char *s = msg->heap + msg->heap_len + new;
+  char *s = msg->heap.base + msg->heap.len + new;
   for (i = 0; i < len; ++i) *s++ = tolower(p[i]);
   *s++ = '\0';
   }
-  msg->heap_len += len + new;
+  msg->heap.len += len + new;
   return 0;
 }
 
@@ -330,8 +335,8 @@ static int header_value_cb(http_parser *parser, const char *p, size_t len)
   // TODO: fix overflow!
   int new = parser->state == 50 ? 1 : 0; // s_header_value?
   // append to the heap
-  strncat(msg->heap + msg->heap_len + new, p, len);
-  msg->heap_len += len + new;
+  strncat(msg->heap.base + msg->heap.len + new, p, len);
+  msg->heap.len += len + new;
   return 0;
 }
 
@@ -517,6 +522,7 @@ static void response_free(msg_t *self)
     self->client->msg = NULL;
   }
   // TODO: cleanup cleaner
+  buf_free(self->heap);
   msg_free(self);
 }
 

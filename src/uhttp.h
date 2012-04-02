@@ -23,9 +23,8 @@ struct msg_s {
   int has_content_length : 1;
   int has_transfer_encoding : 1;
   int finished : 1;
+  uv_buf_t heap;
   // TODO: reconsider? malloc/realloc?
-  size_t heap_len;
-  char heap[4096 + HTTP_MAX_HEADER_SIZE]; // collect url and headers
   size_t nbufs;
   uv_buf_t bufs[128];
 };

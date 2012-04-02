@@ -37,7 +37,7 @@ static int l_msg(lua_State *L)
       lua_setfield(L, -2, "upgrade");
     }
     // url
-    const char *p = msg->heap;
+    const char *p = msg->heap.base;
     lua_pushstring(L, p);
     lua_setfield(L, -2, "url");
     // uri
@@ -389,6 +389,8 @@ LUALIB_API int luaopen_luv(lua_State *L) {
   lua_setfield(L, -2, "SHUT");
   lua_pushinteger(L, EVT_CLOSE);
   lua_setfield(L, -2, "CLOSE");
+  lua_pushinteger(L, EVT_MESSAGE);
+  lua_setfield(L, -2, "MESSAGE");
 
   return 1;
 }
