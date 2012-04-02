@@ -5,7 +5,7 @@ local Table = require('table')
 --local delay = require('timer').setTimeout
 --local LUV = require('./luv')
 --local JSON = require('json')
-local LUV = require('luv')
+local LUV = require('lu')
 print('LUV', LUV)
 
 local RESPONSE_TABLE = {'H','e','llo','\n'}

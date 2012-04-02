@@ -30,7 +30,7 @@ INCS      := -I$(LUA_DIR)/src -I$(UV_DIR)/include -I$(HTTP_DIR)
 #LIBS      := $(LUA_DIR)/src/libluajit.a $(UV_DIR)/uv.a $(HTTP_DIR)/http_parser.o
 LIBS      := $(UV_DIR)/uv.a $(HTTP_DIR)/http_parser.o
 
-all: deps luv.so luv
+all: deps lu.luvit luv.so luv
 
 DEPS  := \
   bin/luajit \
@@ -95,6 +95,9 @@ $(HTTP_DIR):
 luv.so: src/luv.c src/uhttp.c $(LIBS)
 	$(CC) $(CFLAGS) $(INCS) -shared -o $@ $^ -lpthread -lm -lrt
 	#cp $@ luv.luvit
+
+lu.luvit: src/lu.c $(LIBS)
+	$(CC) $(CFLAGS) $(INCS) -shared -o $@ $^ -lpthread -lm -lrt
 
 luv: src/test.c src/uhttp.c $(LIBS)
 	$(CC) $(CFLAGS) $(INCS) -o $@ $^ $(LDFLAGS) -lpthread -lm -lrt
