@@ -122,5 +122,8 @@ profile: luv
 profile-mem: luv
 	chpst -o 2048 valgrind --leak-check=full --show-reachable=yes -v ./luv
 
-.PHONY: all deps profile clean
+clean:
+	rm -fr build bin luv luv.so
+
+.PHONY: all deps profile profile-mem clean
 #.SILENT:

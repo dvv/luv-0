@@ -177,6 +177,7 @@ static void client_free(client_t *client) {
 /******************************************************************************/
 
 static void client_on_timeout(uv_timer_t *timer, int status);
+static void response_free(msg_t *self);
 
 // set close timeout. N.B. start/stop is idempotent
 static void client_timeout(client_t *self, uint64_t timeout)
@@ -197,8 +198,21 @@ static void client_after_close(uv_handle_t *handle)
   if (!uv_is_closing((uv_handle_t *)&self->timer_timeout)) {
     uv_close((uv_handle_t *)&self->timer_timeout, NULL);
   }
+  // free pending responses, if any
+  msg_t *p = self->msg, *prev;
+  self->msg = NULL;
+  if (p) {
+    assert(!p->next);
+    //DEBUGF("PENDING: %p", p);
+    while (p) {
+      ////p->finished = 0;
+      prev = p->prev;
+      response_free(p);
+      p = prev;
+    }
+  }
   // fire 'close' event
-  EVENT(self, self->msg, EVT_CLOSE, last_err().code, NULL);
+  EVENT(self, NULL, EVT_CLOSE, last_err().code, NULL);
   // free self
   client_free(self);
 }
@@ -497,8 +511,11 @@ int response_write(msg_t *self, const char *data, size_t len)
 
 static void response_free(msg_t *self)
 {
-  DEBUGF("RFREE %p\n", self);
-  self->client->msg = NULL;
+  //DEBUGF("RFREE %p", self);
+  // this is the last message?
+  if (self->client->msg == self) {
+    self->client->msg = NULL;
+  }
   // TODO: cleanup cleaner
   msg_free(self);
 }
