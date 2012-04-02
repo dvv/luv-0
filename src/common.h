@@ -2,6 +2,7 @@
 #define _LUV_COMMON_H
 
 #include <stddef.h>
+#include <inttypes.h>
 #include <stdlib.h>
 #include <string.h>
 #include <stdio.h>

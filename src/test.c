@@ -97,8 +97,6 @@ static void client_on_event(client_t *self, msg_t *msg, enum event_t ev, int sta
 
 int main()
 {
-printf("MSG %ld\n", sizeof(msg_t));
-
   uv_loop_t *loop = uv_default_loop();
 
   // N.B. let libuv catch EPIPE
