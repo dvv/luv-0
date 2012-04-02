@@ -44,7 +44,7 @@ uv_tcp_t *server_init(
     event_cb on_event
   );
 
-int response_write(msg_t *self, const char *data, size_t len);
+void response_write(msg_t *self, const char *data, size_t len);
 void response_end(msg_t *self);
 
 #endif

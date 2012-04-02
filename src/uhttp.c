@@ -503,21 +503,22 @@ uv_tcp_t *server_init(
 /******************************************************************************/
 
 // write data to the message buffer
-int response_write(msg_t *self, const char *data, size_t len)
+void response_write(msg_t *self, const char *data, size_t len)
 {
   assert(self);
-  assert(!self->finished);
-  // TODO: HEAD should void body
-//printf("WRITE %*s\n", len, data);
-  // TODO: overflow
-  uv_buf_t *buf = &self->bufs[self->nbufs++];
-  buf->base = (char *)data;
-  buf->len = len;
-  return 0;
+  if (!self->finished) {
+    // TODO: HEAD should void body
+  //printf("WRITE %*s\n", len, data);
+    // TODO: overflow
+    uv_buf_t *buf = &self->bufs[self->nbufs++];
+    buf->base = (char *)data;
+    buf->len = len;
+  }
 }
 
 static void response_free(msg_t *self)
 {
+  assert(self);
   //DEBUGF("RFREE %p", self);
   // this is the last message?
   if (self->client->msg == self) {
@@ -580,6 +581,7 @@ void response_end(msg_t *self)
         if (uv_write(rq, handle, p->bufs, p->nbufs,
             response_client_after_write)) {
           req_free((uv_req_t *)rq);
+          EVENT(p->client, p, EVT_ERROR, last_err().code, NULL);
         }
       // stream is not writable? just cleanup message
       } else {
