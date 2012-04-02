@@ -1,6 +1,6 @@
 #include "uhttp.h"
 
-//#define DELAY_RESPONSE 100
+#define DELAY_RESPONSE 100
 
 #define RESPONSE_HEAD \
   "HTTP/1.1 200 OK\r\n" \

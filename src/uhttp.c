@@ -250,7 +250,9 @@ static void client_shutdown(client_t *self)
   // flush write queue
   uv_shutdown_t *rq = (uv_shutdown_t *)req_alloc();
   rq->data = self;
-  uv_shutdown(rq, (uv_stream_t *)&self->handle, client_after_shutdown);
+  if (uv_shutdown(rq, (uv_stream_t *)&self->handle, client_after_shutdown)) {
+    req_free((uv_req_t *)rq);
+  }
 }
 
 // async: client close timer expired
@@ -575,7 +577,10 @@ void response_end(msg_t *self)
         uv_write_t *rq = (uv_write_t *)req_alloc();
         rq->data = p;
         // write buffers
-        uv_write(rq, handle, p->bufs, p->nbufs, response_client_after_write);
+        if (uv_write(rq, handle, p->bufs, p->nbufs,
+            response_client_after_write)) {
+          req_free((uv_req_t *)rq);
+        }
       // stream is not writable? just cleanup message
       } else {
         response_free(p);
