@@ -452,7 +452,8 @@ static void server_on_connection(uv_stream_t *self, int status)
   client_t *client = client_alloc();
   assert(client);
   memset(client, 0, sizeof(*client));
-  client->on_event = self->data;
+  client->server = (uv_tcp_t *)self;
+  client->on_event = client->server->data;
   client->handle.data = client;
   client->timer_timeout.data = client;
   client->parser.data = client;

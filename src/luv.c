@@ -13,7 +13,6 @@ const char *STATUS_CODES[600];
 /******************************************************************************/
 
 static lua_State *LLL;
-static int cb_ref;
 
 static int l_msg(lua_State *L)
 {
@@ -71,11 +70,13 @@ static int l_msg(lua_State *L)
   return 1;
 }
 
+static int GLOBAL_CB_GET_RID;
+
 static void on_event(client_t *self, msg_t *msg, enum event_t ev, int status, void *data)
 {
   lua_State *L = LLL;
   int argc = 2;
-  lua_rawgeti(L, LUA_REGISTRYINDEX, cb_ref); // get event handler
+  lua_rawgeti(L, LUA_REGISTRYINDEX, GLOBAL_CB_GET_RID); // get event handler
   lua_pushlightuserdata(L, msg);
   lua_pushinteger(L, ev);
   switch (ev) {
@@ -96,8 +97,8 @@ static int l_make_server(lua_State *L)
   int port = luaL_checkint(L, 1);
   const char *host = luaL_checkstring(L, 2);
   int backlog_size = luaL_checkint(L, 3);
-  cb_ref = luaL_ref(L, LUA_REGISTRYINDEX); // store event handler
   uv_tcp_t *server = server_init(port, host, backlog_size, on_event);
+  GLOBAL_CB_GET_RID = luaL_ref(L, LUA_REGISTRYINDEX); // store event handler
   return 0;
 }
 

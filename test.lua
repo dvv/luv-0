@@ -5,7 +5,7 @@ local Table = require('table')
 --local delay = require('timer').setTimeout
 --local LUV = require('./luv')
 --local JSON = require('json')
-local LUV = require('lu')
+local LUV = require('luv')
 print('LUV', LUV)
 
 local RESPONSE_TABLE = {'H','e','llo','\n'}
@@ -31,7 +31,7 @@ LUV.make_server(8080, '0.0.0.0', 128, function (msg, ev, int, void)
     --LUV.delay(10, function ()
     if not slow then
       local m = LUV.msg(msg)
-      for k, v in pairs(m.headers) do print(k, v) end
+      --for k, v in pairs(m.headers) do print(k, v) end
       if m.uri.path == '/1' then
         LUV.delay(20, function () LUV.send(msg, '[111]\n', 200, {}) end)
       elseif m.uri.path == '/2' then
