@@ -535,11 +535,19 @@ static void response_client_after_write(uv_write_t *rq, int status)
 {
   msg_t *msg = rq->data;
   req_free((uv_req_t *)rq);
-  // client is keep-alive, set keep-alive timeout upon request completion
-  if (msg->should_keep_alive) {
-    client_timeout(msg->client, 500);
+  // write failed? report error
+  if (status) {
+    uv_stream_t *handle = (uv_stream_t *)&msg->client->handle;
+printf("WRITEERROR %d WRITABLE?: %d FD: %d\n", last_err().code, uv_is_writable(handle), handle->fd);
+    EVENT(msg->client, msg, EVT_ERROR, last_err().code, NULL);
+  // write succeeded? handle keep-alive
   } else {
-    client_shutdown(msg->client);
+    // client is keep-alive, set keep-alive timeout upon request completion
+    if (msg->should_keep_alive) {
+      client_timeout(msg->client, 500);
+    } else {
+      client_shutdown(msg->client);
+    }
   }
   // free message
   response_free(msg);
@@ -572,7 +580,8 @@ void response_end(msg_t *self)
       assert(p->headers_sent);
       uv_stream_t *handle = (uv_stream_t *)&p->client->handle;
       // write only to writable stream
-      if (uv_is_writable(handle)) {
+      // FIXME: should not snoop into the handle!
+      if (handle->fd >= 0) {
         // stop close timer
         client_timeout(p->client, 0);
         // create write request
@@ -580,12 +589,13 @@ void response_end(msg_t *self)
         rq->data = p;
         // write buffers
         if (uv_write(rq, handle, p->bufs, p->nbufs,
-            response_client_after_write)) {
-          req_free((uv_req_t *)rq);
-          EVENT(p->client, p, EVT_ERROR, last_err().code, NULL);
+            response_client_after_write))
+        {
+          response_client_after_write(rq, -1);
         }
-      // stream is not writable? just cleanup message
+      // stream is invalid? just cleanup message
       } else {
+printf("JUSTFREE %p %d %d\n", p, p->finished, p->headers_sent);
         response_free(p);
       }
       // try to flush next message

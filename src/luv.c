@@ -200,7 +200,7 @@ static int l_send(lua_State *L)
           // get body length
           len = lua_objlen(L, -1);
           s = luaL_prepbuffer(&b);
-          sprintf((char *)s, "Content-Length: %" PRIu32 "\r\n", len);
+          sprintf((char *)s, "Content-Length: %" PRIu32 "\r\n", (uint32_t)len);
           luaL_addsize(&b, strlen(s));
           ////self->chunked = 0;
         // response is not finished. setup chunking
@@ -225,7 +225,7 @@ static int l_send(lua_State *L)
     luaL_buffinit(L, &b);
     if (len > 0) {
       s = luaL_prepbuffer(&b);
-      sprintf((char *)s, "%" PRIx32 "\r\n", len);
+      sprintf((char *)s, "%" PRIx32 "\r\n", (uint32_t)len);
       luaL_addsize(&b, strlen(s));
       luaL_addvalue(&b);
       luaL_addstring(&b, "\r\n");

@@ -43,6 +43,7 @@ LUV.make_server(8080, '0.0.0.0', 128, function (msg, ev, int, void)
       else
         LUV.delay(1, function () LUV.send(msg, RESPONSE_BODY, 200, {}) end)
         --LUV.send(msg, RESPONSE_BODY, 200, {})
+        --LUV.send(msg, RESPONSE_BODY, 200, {})
       end
     else
       -- one write()
