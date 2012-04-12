@@ -462,7 +462,7 @@ static void server_on_connection(uv_stream_t *self, int status)
   uv_timer_init(self->loop, &client->timer_timeout);
   // TODO: de-hardcode
   // set client initial inactivity timeout to 10 seconds
-  client_timeout(client, 10000);
+  client_timeout(client, 1000);
 
   // accept client
   uv_tcp_init(self->loop, &client->handle);
@@ -558,7 +558,10 @@ printf("WRITEERROR %d WRITABLE?: %d FD: %d\n", last_err().code, uv_is_writable(h
 void response_end(msg_t *self)
 {
   assert(self);
-  assert(!self->finished);
+  ///assert(!self->finished);
+  if(self->finished) {
+printf("ALREADY FINISHED %p\n", self);
+  }
   // mark this message as finished
   self->finished = 1;
   // all of previous messages are also finished?
@@ -581,7 +584,7 @@ void response_end(msg_t *self)
       uv_stream_t *handle = (uv_stream_t *)&p->client->handle;
       // write only to writable stream
       // FIXME: should not snoop into the handle!
-      if (handle->fd >= 0) {
+      if (handle->fd >= 0 && !uv_is_closing((uv_handle_t *)handle)) {
         // stop close timer
         client_timeout(p->client, 0);
         // create write request
